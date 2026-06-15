@@ -1,0 +1,25 @@
+{
+  "name": "@askalf/keeper",
+  "version": "0.1.0",
+  "description": "own your agent secrets — an encrypted vault that hands agents scoped, short-lived, single-use leases instead of raw keys, and audits every access. Part of Own Your Stack.",
+  "type": "module",
+  "bin": {
+    "keeper": "./src/cli.mjs"
+  },
+  "exports": {
+    ".": "./src/index.mjs"
+  },
+  "scripts": {
+    "test": "node --test",
+    "demo": "node demo/demo.mjs"
+  },
+  "dependencies": {
+    "@askalf/warden": "github:askalf/warden"
+  },
+  "keywords": ["ai-agents", "agent-security", "secrets", "credentials", "vault", "least-privilege", "own-your-stack"],
+  "author": "Thomas Sprayberry",
+  "license": "MIT",
+  "repository": "github:askalf/keeper",
+  "engines": { "node": ">=20" },
+  "files": ["src"]
+}
