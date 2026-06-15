@@ -8,6 +8,7 @@ import crypto from 'node:crypto';
 import fs from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { home, kpath } from './paths.mjs';
+import { keychainGet, keychainSet, keychainAvailable } from './keychain.mjs';
 
 // 0600 is a no-op on Windows (ACL-based) — strip inheritance + grant only the user.
 function lockdown(file) {
@@ -17,10 +18,11 @@ function lockdown(file) {
 
 const _keyCache = new Map();
 function masterKey() {
-  const ck = (process.env.KEEPER_HOME || '') + '|' + (process.env.KEEPER_PASSPHRASE || '');
+  const ck = [process.env.KEEPER_HOME || '', process.env.KEEPER_PASSPHRASE || '', process.env.KEEPER_KEYCHAIN || ''].join('|');
   if (_keyCache.has(ck)) return _keyCache.get(ck);
   let key;
   const pass = process.env.KEEPER_PASSPHRASE;
+  const useKeychain = process.env.KEEPER_KEYCHAIN === '1' || process.env.KEEPER_KEYCHAIN === 'true';
   if (pass) {
     // passphrase mode: the key is derived, never stored — only a salt is.
     const sf = kpath('salt');
@@ -28,6 +30,14 @@ function masterKey() {
     try { salt = Buffer.from(fs.readFileSync(sf, 'utf8').trim(), 'hex'); }
     catch { salt = crypto.randomBytes(16); fs.mkdirSync(home(), { recursive: true }); fs.writeFileSync(sf, salt.toString('hex'), { mode: 0o600 }); lockdown(sf); }
     key = crypto.scryptSync(pass, salt, 32, { N: 16384, r: 8, p: 1 });
+  } else if (useKeychain) {
+    // OS keychain — the key is held by the OS (Keychain / Secret Service / DPAPI),
+    // never plaintext on disk. Fail CLOSED if requested but unavailable: never
+    // silently downgrade a secrets vault to a weaker key store.
+    if (!keychainAvailable()) throw new Error('KEEPER_KEYCHAIN set but no OS keychain available (security / secret-tool / DPAPI)');
+    let hex = keychainGet();
+    if (!hex) { hex = crypto.randomBytes(32).toString('hex'); keychainSet(hex); }
+    key = Buffer.from(hex, 'hex');
   } else {
     // key-file fallback: convenient, but the key sits on disk.
     const kf = kpath('master.key');

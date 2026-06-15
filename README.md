@@ -72,7 +72,12 @@ Both are enforced **before** the secret is redeemed — an out-of-scope or over-
 keeper is a vault, so its own security is the point:
 
 - **Encrypted at rest** — AES-256-GCM, with the secret *name* bound in as AAD, so a ciphertext can't be swapped between names.
-- **Master key** — set `KEEPER_PASSPHRASE` to derive the key with **scrypt** (the key is *never written to disk* — only a salt is). Without it, keeper falls back to a random key file in `~/.keeper` (`0600`, plus a restrictive ACL on Windows). Use the passphrase for anything that matters.
+- **Master key** — three options, in priority order:
+  - `KEEPER_PASSPHRASE` — derived with **scrypt**; never on disk (only a salt is).
+  - `KEEPER_KEYCHAIN=1` — held by the **OS keychain**: macOS Keychain · Linux Secret Service · Windows DPAPI (user scope). Never plaintext on disk, and it **fails closed** if no keychain is available (no silent downgrade). `keeper keychain` shows the active backend.
+  - else — a random key file in `~/.keeper` (`0600` + a restrictive ACL on Windows).
+
+  Use the passphrase or the keychain for anything that matters.
 - **Leases are bearer tokens** — only `sha256(id)` is stored; the raw id is returned once, to you. Reading `leases.json` therefore can't redeem anything.
 - **Single-use is atomic** — redeem is a check-and-consume under a cross-process lock, so concurrent redeems can't double-spend a one-use lease.
 - **Fail-closed** — a tampered, swapped, or wrong-key entry returns null and denies; it never throws or leaks garbage.
@@ -91,6 +96,7 @@ keeper exec <lease> --as <ENV> -- <cmd...>  redeem + run <cmd> with the secret i
 keeper broker [--port 8771]        egress-injection proxy (base-URL swap, zero key in the agent)
 keeper leases · keeper revoke <lease> · keeper rm <name>
 keeper audit [--verify]            the access log, optionally chain-verified
+keeper keychain                    master-key backend status (KEEPER_KEYCHAIN=1 to use the OS keychain)
 ```
 
 ## Library

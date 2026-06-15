@@ -4,6 +4,7 @@ import fs from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { addSecret, removeSecret, grant, redeem, revoke, vault, lease, audit } from './index.mjs';
 import { startBroker } from './broker.mjs';
+import { keychainAvailable, keychainKind } from './keychain.mjs';
 
 const raw = process.argv.slice(2);
 const sep = raw.indexOf('--');
@@ -42,7 +43,10 @@ function usage() {
                                        broker injects the secret upstream, the agent holds none
   keeper leases                        list outstanding leases
   keeper revoke <lease>                kill a lease
-  keeper audit [--verify]              show the access log (--verify checks the hash chain)`);
+  keeper audit [--verify]              show the access log (--verify checks the hash chain)
+  keeper keychain                      master-key backend status (set KEEPER_KEYCHAIN=1 to use the OS keychain)
+
+  Master key: KEEPER_PASSPHRASE (scrypt, off-disk) · KEEPER_KEYCHAIN=1 (OS keychain) · else a 0600 key file.`);
 }
 
 function valueFromStdin() {
@@ -87,6 +91,15 @@ const T = {
     const host = opt('--host', '127.0.0.1');
     startBroker({ port, host, onLog: (m) => err(c(C.dim, 'keeper: ' + m)) });
     return new Promise(() => {}); // run until killed
+  },
+  keychain() {
+    const on = process.env.KEEPER_KEYCHAIN === '1' || process.env.KEEPER_KEYCHAIN === 'true';
+    const avail = keychainAvailable();
+    out(`backend:    ${keychainKind()}`);
+    out(`available:  ${avail ? c(C.grn, 'yes') : c(C.red, 'no')}`);
+    out(`active:     ${on ? c(C.grn, 'yes (KEEPER_KEYCHAIN=1)') : c(C.dim, 'no — set KEEPER_KEYCHAIN=1 to use it')}`);
+    if (on && !avail) { out(c(C.red, '  ⚠ requested but unavailable — keeper will fail closed')); return 1; }
+    return 0;
   },
   redeem() {
     if (!pos[0]) return (usage(), 2);
