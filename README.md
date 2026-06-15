@@ -30,6 +30,25 @@ keeper audit --verify                                 # tamper-evident access lo
 
 The agent dispatched `keeper exec <lease> …`; the key was decrypted inside keeper and handed to the subprocess's environment — it never entered the agent's context, stdout, or logs. Run the whole story: `npm run demo`.
 
+## Egress broker — the agent just swaps a base URL
+
+Run the broker and the agent needs no key, no `exec`, no redeem — only a base-URL swap:
+
+```bash
+# bind a lease to ONE upstream + how to inject the secret
+LEASE=$(keeper grant OPENAI_API_KEY --upstream https://api.openai.com --inject bearer --ttl 600 --uses 100)
+keeper broker --port 8771 &
+```
+
+Point the agent's client at the broker:
+
+```js
+const openai = new OpenAI({ baseURL: `http://127.0.0.1:8771/${LEASE}`, apiKey: 'unused' });
+await openai.chat.completions.create({ model: 'gpt-4o-mini', messages: [/* … */] });
+```
+
+For each call the broker redeems the lease (atomic + audited), makes the **real** upstream request itself with the secret injected (`Authorization: Bearer …`), and streams the response back. The key is injected at the network boundary — it never enters the agent's context, env, or logs. And because the lease is **bound to one upstream**, the secret can only ever go to that host; the agent can't redirect it. `--inject`: `bearer` (default) · `x-api-key` (Anthropic) · `Header-Name` (custom).
+
 ## Why a lease, not the key
 
 | | a raw key in env / prompt | a keeper lease |
@@ -58,9 +77,10 @@ What it is **not**: a defense against an attacker who already has your passphras
 ```
 keeper add <name>                  store a secret (stdin, or --value=)
 keeper ls                          list secret names (never values)
-keeper grant <name> [--ttl --uses --host]   mint a lease
+keeper grant <name> [--ttl --uses --host --upstream --inject]   mint a lease
 keeper redeem <lease> [--host]     exchange a valid lease for the secret (egress side)
 keeper exec <lease> --as <ENV> -- <cmd...>  redeem + run <cmd> with the secret in its env only
+keeper broker [--port 8771]        egress-injection proxy (base-URL swap, zero key in the agent)
 keeper leases · keeper revoke <lease> · keeper rm <name>
 keeper audit [--verify]            the access log, optionally chain-verified
 ```

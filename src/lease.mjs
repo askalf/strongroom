@@ -30,14 +30,17 @@ function evalLease(l, host, now = Date.now()) {
   return { ok: true, lease: l };
 }
 
-export function mintLease(secret, { ttlS = 300, uses = 1, host = null } = {}) {
+export function mintLease(secret, { ttlS = 300, uses = 1, host = null, upstream = null, inject = null } = {}) {
   const id = 'lease_' + crypto.randomBytes(18).toString('hex'); // 144-bit bearer token — returned, never stored raw
   return withLock(() => {
     const leases = read(), now = Date.now();
     for (const [k, v] of Object.entries(leases)) if (now > v.expiresAt) delete leases[k]; // prune expired
-    leases[sha256(id)] = { secret, host: host || null, expiresAt: now + ttlS * 1000, usesLeft: uses, createdAt: now };
+    // upstream/inject bind a lease to ONE destination for the egress broker, so the
+    // injected secret can only ever go to that host — never an attacker-chosen URL.
+    const rec = { secret, host: host || null, upstream: upstream || null, inject: inject || null, expiresAt: now + ttlS * 1000, usesLeft: uses, createdAt: now };
+    leases[sha256(id)] = rec;
     write(leases);
-    return { id, host: host || null, expiresAt: now + ttlS * 1000, usesLeft: uses };
+    return { id, ...rec };
   });
 }
 

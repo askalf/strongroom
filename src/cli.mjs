@@ -3,6 +3,7 @@
 import fs from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { addSecret, removeSecret, grant, redeem, revoke, vault, lease, audit } from './index.mjs';
+import { startBroker } from './broker.mjs';
 
 const raw = process.argv.slice(2);
 const sep = raw.indexOf('--');
@@ -31,9 +32,13 @@ function usage() {
   keeper rm <name>                     delete a secret
   keeper grant <name> [opts]           mint a lease the agent holds instead of the key
        --ttl <s>=300  --uses <n>=1  --host <host>
+       --upstream <base-url>  --inject <bearer|x-api-key|Header-Name>   (for the broker)
   keeper redeem <lease> [--host <h>]   exchange a valid lease for the secret (egress side)
   keeper exec <lease> --as <ENV> [--host <h>] -- <cmd...>
                                        redeem + run <cmd> with the secret in its env only
+  keeper broker [--port 8771]          run the egress-injection proxy: point your client's
+                                       base URL at http://127.0.0.1:<port>/<lease> — the
+                                       broker injects the secret upstream, the agent holds none
   keeper leases                        list outstanding leases
   keeper revoke <lease>                kill a lease
   keeper audit [--verify]              show the access log (--verify checks the hash chain)`);
@@ -65,11 +70,20 @@ const T = {
   grant() {
     if (!pos[0]) return (usage(), 2);
     try {
-      const l = grant(pos[0], { ttlS: Number(opt('--ttl', 300)), uses: Number(opt('--uses', 1)), host: opt('--host', null) || null });
+      const l = grant(pos[0], {
+        ttlS: Number(opt('--ttl', 300)), uses: Number(opt('--uses', 1)), host: opt('--host', null) || null,
+        upstream: opt('--upstream', null) || null, inject: opt('--inject', null) || null,
+      });
       out(c(C.bold, l.id));
-      err(c(C.dim, `  ↳ ${pos[0]} · ${l.usesLeft} use(s) · ttl ${Math.round((l.expiresAt - Date.now()) / 1000)}s${l.host ? ' · host ' + l.host : ''}`));
+      err(c(C.dim, `  ↳ ${pos[0]} · ${l.usesLeft} use(s) · ttl ${Math.round((l.expiresAt - Date.now()) / 1000)}s${l.host ? ' · host ' + l.host : ''}${l.upstream ? ' · → ' + l.upstream : ''}`));
       return 0;
     } catch (e) { err(`${c(C.red, '✗')} ${e.message}`); return 1; }
+  },
+  broker() {
+    const port = Number(opt('--port', 8771));
+    const host = opt('--host', '127.0.0.1');
+    startBroker({ port, host, onLog: (m) => err(c(C.dim, 'keeper: ' + m)) });
+    return new Promise(() => {}); // run until killed
   },
   redeem() {
     if (!pos[0]) return (usage(), 2);
@@ -112,4 +126,5 @@ function eventColor(ev) {
 }
 
 if (!cmd || cmd === '-h' || cmd === '--help' || !T[cmd]) { usage(); process.exit(cmd && !['-h', '--help'].includes(cmd) ? 2 : 0); }
-process.exit(T[cmd]());
+if (cmd === 'broker') T.broker(); // long-running; keep the event loop alive
+else process.exit(T[cmd]());

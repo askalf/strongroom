@@ -29,7 +29,7 @@ export function removeSecret(name) {
 export function grant(name, opts = {}) {
   if (!vault.hasSecret(name)) throw new Error(`no such secret: ${name}`);
   const l = lease.mintLease(name, opts);
-  audit.record({ event: 'grant', secret: name, lease: fp(l.id), host: l.host, ttlS: opts.ttlS ?? 300, uses: opts.uses ?? 1 });
+  audit.record({ event: 'grant', secret: name, lease: fp(l.id), host: l.host, upstream: l.upstream, ttlS: opts.ttlS ?? 300, uses: opts.uses ?? 1 });
   return l;
 }
 
@@ -42,7 +42,7 @@ export function redeem(leaseId, { host } = {}) {
   const value = vault.getSecret(c.lease.secret);
   if (value == null) { audit.record({ event: 'deny', lease: fp(leaseId), reason: 'decrypt-failed', host: host || null }); return { ok: false, reason: 'decrypt-failed' }; }
   audit.record({ event: 'redeem', lease: fp(leaseId), secret: c.lease.secret, host: host || null });
-  return { ok: true, value, name: c.lease.secret };
+  return { ok: true, value, name: c.lease.secret, upstream: c.lease.upstream, inject: c.lease.inject };
 }
 
 export function revoke(leaseId) {
