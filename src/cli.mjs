@@ -142,7 +142,8 @@ const T = {
     for (const e of events) out(`${c(C.dim, e.ts)}  ${eventColor(e.event)} ${e.secret || e.lease || ''}${e.reason ? c(C.red, ' (' + e.reason + ')') : ''}${e.host ? c(C.dim, ' · ' + e.host) : ''}`);
     if (opt('--verify', false)) {
       const v = audit.verify();
-      out(v.ok ? c(C.grn, `\n✓ audit chain intact (${v.entries} entries)`) : c(C.red, `\n✗ audit TAMPERED at entry ${v.at}`));
+      const where = v.reason ? `(${v.reason})` : v.at != null ? `at entry ${v.at}` : '';
+      out(v.ok ? c(C.grn, `\n✓ audit chain intact (${v.entries} entries)`) : c(C.red, `\n✗ audit TAMPERED ${where}`.trimEnd()));
       return v.ok ? 0 : 1;
     }
     return 0;

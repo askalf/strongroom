@@ -29,7 +29,22 @@ function evalLease(l, host, now = Date.now()) {
   if (!l) return { ok: false, reason: 'unknown' };
   if (now > l.expiresAt) return { ok: false, reason: 'expired' };
   if (l.usesLeft <= 0) return { ok: false, reason: 'exhausted' };
-  if (l.host && host && l.host !== host) return { ok: false, reason: 'host-scope' };
+  // A host-scoped lease DENIES unless the destination host matches exactly —
+  // including when the host is MISSING. (Previously `&& host` short-circuited, so
+  // a host-scoped lease redeemed with no host returned the secret for any host.)
+  if (l.host && l.host !== host) return { ok: false, reason: 'host-scope' };
+  return { ok: true, lease: l };
+}
+
+/** Read a lease's binding (upstream/paths/rate/host) WITHOUT host-scope enforcement
+ *  or consuming a use — the broker needs the binding to learn the destination host
+ *  before it can pass it to the enforced redeem. Still checks expiry/uses. */
+export function peekLease(id) {
+  const l = read()[sha256(id)];
+  if (!l) return { ok: false, reason: 'unknown' };
+  const now = Date.now();
+  if (now > l.expiresAt) return { ok: false, reason: 'expired' };
+  if (l.usesLeft <= 0) return { ok: false, reason: 'exhausted' };
   return { ok: true, lease: l };
 }
 
