@@ -10,6 +10,7 @@
 // Local-only (127.0.0.1), plaintext HTTP to the agent, real HTTPS upstream.
 import http from 'node:http';
 import crypto from 'node:crypto';
+import path from 'node:path';
 import { Readable } from 'node:stream';
 import { redeem, lease as leaseMod, audit } from './index.mjs';
 
@@ -29,10 +30,28 @@ function injectAuth(headers, inject, secret) {
   else headers[String(spec).toLowerCase()] = secret; // custom header name → secret value
 }
 
-// Path allowlist — glob patterns ( * matches any non-query chars ). Empty = allow all.
-function pathAllowed(path, patterns) {
-  const p = path.split('?')[0];
-  return patterns.some((g) => new RegExp('^' + g.replace(/[.+^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '[^?]*') + '$').test(p));
+// Canonicalize the request target ONCE, BEFORE the allowlist check, so the path
+// we authorize is the SAME path we send upstream (no parser differential). Split
+// off the query, percent-decode the path, resolve `.`/`..` segments, and force a
+// leading `/`. Net: `/v1/chat/../admin/keys` → `/v1/admin/keys` so a `..` escape
+// is evaluated against the allowlist as the path that actually leaves the box.
+function canonicalize(rest) {
+  const raw = rest || '/';
+  const qi = raw.indexOf('?');
+  const rawPath = qi >= 0 ? raw.slice(0, qi) : raw;
+  const query = qi >= 0 ? raw.slice(qi) : ''; // includes the leading '?'
+  let decoded;
+  try { decoded = decodeURIComponent(rawPath); } catch { decoded = rawPath; } // malformed %xx → use raw, never throw
+  let norm = path.posix.normalize(decoded);
+  if (!norm.startsWith('/')) norm = '/' + norm; // normalize may strip a leading '..' to '' — re-anchor
+  return { path: norm, query, full: norm + query };
+}
+
+// Path allowlist — glob patterns ( * matches any non-query, non-`/` chars ). The
+// non-`/`-crossing `*` means a `/v1/chat/*` lease scopes to ONE path segment's
+// worth of endpoint under /v1/chat/, not the whole host. Empty = allow all.
+function pathAllowed(p, patterns) {
+  return patterns.some((g) => new RegExp('^' + g.replace(/[.+^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '[^/?]*') + '$').test(p));
 }
 
 // Per-lease sliding-window rate limit (req/min), in this broker process.
@@ -62,25 +81,36 @@ export function startBroker({ port = 8771, host = '127.0.0.1', onLog = () => {} 
       const lid = m[1], rest = m[2] || '/';
       const fp = fpLease(lid);
 
-      // Peek the lease (non-consuming) to read its binding + limits before spending a use.
-      const peek = leaseMod.checkLease(lid);
+      // Canonicalize ONCE up front — the path we authorize is the path we send.
+      const canon = canonicalize(rest);
+
+      // Peek the lease (non-consuming, NO host enforcement) to read its binding +
+      // limits before spending a use. We must learn the upstream host here so we
+      // can pass it to the host-ENFORCED redeem below (a host-scoped lease now
+      // denies when no host is supplied — see lease.mjs).
+      const peek = leaseMod.peekLease(lid);
       if (!peek.ok) { audit.record({ event: 'deny', lease: fp, reason: peek.reason, via: 'broker' }); return send(res, 403, { error: 'keeper: denied (' + peek.reason + ')' }); }
       const meta = peek.lease;
       if (!meta.upstream) return send(res, 400, { error: 'keeper: lease is not bound to an upstream (grant with --upstream)' });
-      if (meta.paths && !pathAllowed(rest, meta.paths)) { audit.record({ event: 'deny', lease: fp, reason: 'path', path: rest.split('?')[0], via: 'broker' }); return send(res, 403, { error: 'keeper: path not allowed' }); }
+      // Derive the destination host from the bound upstream. A host-scoped lease
+      // must agree with its own upstream, else it could never redeem here.
+      let upHost = null;
+      try { upHost = new URL(meta.upstream).hostname; } catch {}
+      if (meta.host && meta.host !== upHost) { audit.record({ event: 'deny', lease: fp, reason: 'host-scope', via: 'broker' }); return send(res, 403, { error: 'keeper: denied (host-scope)' }); }
+      if (meta.paths && !pathAllowed(canon.path, meta.paths)) { audit.record({ event: 'deny', lease: fp, reason: 'path', path: canon.path, via: 'broker' }); return send(res, 403, { error: 'keeper: path not allowed' }); }
       if (!withinRate(fp, meta.rate)) { audit.record({ event: 'deny', lease: fp, reason: 'rate', via: 'broker' }); res.setHeader('retry-after', '60'); return send(res, 429, { error: 'keeper: rate limit exceeded' }); }
 
       const body = await readBody(req);
-      const r = redeem(lid); // atomic check-and-consume + audit
-      if (!r.ok) return send(res, 403, { error: 'keeper: denied (' + r.reason + ')' }); // lost a race for the last use
+      const r = redeem(lid, { host: upHost }); // atomic check-and-consume + audit, host-enforced
+      if (!r.ok) return send(res, 403, { error: 'keeper: denied (' + r.reason + ')' }); // lost a race for the last use / host-scope
 
-      const url = r.upstream.replace(/\/$/, '') + rest;
+      const url = r.upstream.replace(/\/$/, '') + canon.full;
       const headers = {};
       for (const [k, v] of Object.entries(req.headers)) if (!DROP.has(k.toLowerCase())) headers[k] = v;
       injectAuth(headers, r.inject, r.value); // the only place the real secret touches the request
 
       const up = await fetch(url, { method: req.method, headers, body, redirect: 'manual', duplex: body ? 'half' : undefined });
-      onLog(`${req.method} ${fp} → ${new URL(url).host}${rest.split('?')[0]} ${up.status}`); // never the secret or raw lease
+      onLog(`${req.method} ${fp} → ${new URL(url).host}${canon.path} ${up.status}`); // never the secret or raw lease
 
       res.statusCode = up.status;
       up.headers.forEach((v, k) => { if (!DROP.has(k.toLowerCase())) res.setHeader(k, v); });

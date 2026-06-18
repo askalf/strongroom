@@ -48,6 +48,31 @@ function masterKey() {
   return key;
 }
 
+// Does a master key ALREADY exist, without creating one? Used so a feature
+// (e.g. the audit tip) can attach to the key only once the vault is initialized,
+// and silently no-op on a fresh / keychain-unavailable vault instead of forcing a
+// key into existence as a side effect. Never throws.
+function masterKeyExists() {
+  try {
+    if (process.env.KEEPER_PASSPHRASE) return true; // derivable from the passphrase (+salt)
+    if (process.env.KEEPER_KEYCHAIN === '1' || process.env.KEEPER_KEYCHAIN === 'true') {
+      return keychainAvailable() && !!keychainGet(); // a key is actually stored
+    }
+    return fs.existsSync(kpath('master.key')); // key-file mode: the file is present
+  } catch { return null; }
+}
+
+/** Derive a NAMED subkey from the vault master key (HMAC-SHA256), WITHOUT ever
+ *  exposing the master key itself. Returns a Buffer, or null if no master key
+ *  exists yet (fresh vault) or it can't be obtained (keychain unavailable) — the
+ *  caller no-ops in that case. The master key stays encapsulated in this module. */
+export function deriveSubkey(label) {
+  if (!masterKeyExists()) return null;
+  let mk;
+  try { mk = masterKey(); } catch { return null; } // never let a key-store error break audit
+  return crypto.createHmac('sha256', mk).update(String(label)).digest();
+}
+
 function encrypt(plain, aad) {
   const iv = crypto.randomBytes(12);
   const c = crypto.createCipheriv('aes-256-gcm', masterKey(), iv);
