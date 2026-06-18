@@ -8,7 +8,7 @@ import path from 'node:path';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
-const HOME = path.join(os.tmpdir(), 'keeper-sec-' + process.pid);
+const HOME = fs.mkdtempSync(path.join(os.tmpdir(), 'keeper-sec-')); // 0700, unpredictable name
 process.env.KEEPER_HOME = HOME;
 const { addSecret, grant, redeem, vault } = await import('../src/index.mjs');
 const here = path.dirname(fileURLToPath(import.meta.url));

@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 process.env.KEEPER_HOME = path.join(os.tmpdir(), 'keeper-' + process.pid); // isolate the vault
-import { addSecret, grant, redeem, revoke, vault, lease, audit } from '../src/index.mjs';
+import { addSecret, grant, redeem, revoke, vault, audit } from '../src/index.mjs';
 
 test('vault: secrets are encrypted at rest; round-trip decrypts', () => {
   addSecret('API_KEY', 'sk-super-secret-value');

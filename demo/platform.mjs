@@ -27,7 +27,8 @@ L('[fleet]   dispatches to the device:  ' + l.id);
 L('          (the platform today writes the raw key to ~/.claude/.credentials.json — plaintext on the device)\n');
 
 // ── DEVICE ── what lands on the device is the LEASE, not the key
-const disk = path.join(os.tmpdir(), 'device-creds-' + process.pid + '.txt');
+const deviceDir = fs.mkdtempSync(path.join(os.tmpdir(), 'keeper-device-')); // 0700, unpredictable name
+const disk = path.join(deviceDir, 'device-creds.txt');
 fs.writeFileSync(disk, l.id);
 const broker = startBroker({ port: 0 });
 const bport = await listen(broker);
