@@ -15,6 +15,8 @@ import net from 'node:net';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { execFileSync } from 'node:child_process';
+import { pathToFileURL } from 'node:url';
 
 // Isolated vault home + a fake keychain (never a predictable tmp path) so the
 // audit tip is keyed by a master key held "in the keychain", as in production.
@@ -198,6 +200,53 @@ test('FIX3/4 FP guard: a present-but-empty audit verifies ok (nothing to protect
   process.env.KEEPER_HOME = home;
   fs.writeFileSync(path.join(home, 'audit.jsonl'), ''); // present, empty
   assert.equal(audit.verify().ok, true, 'an empty audit (no entries) with no tip is ok');
+  process.env.KEEPER_HOME = HOME;
+});
+
+// ───── FIX 5 (2026-06-18) — audit tip-downgrade when the master key is withheld ─────
+test('FIX5: a tip-protected audit does NOT downgrade to "intact" when the master key is unavailable', () => {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'keeper-downgrade-'));
+  buildChain(home); // built WITH the keychain key → tip + protected marker written
+  process.env.KEEPER_HOME = HOME;
+  assert.ok(fs.existsSync(path.join(home, 'audit.protected')), 'precondition: tip-protected marker was written');
+  assert.ok(fs.existsSync(path.join(home, 'audit.tip.json')), 'precondition: a tip exists');
+
+  // Attacker truncates the log to a valid prefix AND deletes the tip. In key-file
+  // mode the key sits beside audit.jsonl, so they can withhold it too — here we
+  // simulate the withheld key with a missing keychain (masterKey throws → no key).
+  const f = path.join(home, 'audit.jsonl');
+  const lines = fs.readFileSync(f, 'utf8').trim().split('\n');
+  fs.writeFileSync(f, lines.slice(0, 2).join('\n') + '\n');
+  fs.rmSync(path.join(home, 'audit.tip.json'));
+
+  // Verify in a FRESH process (no in-proc key cache), key unavailable.
+  const idx = pathToFileURL(path.join(process.cwd(), 'src', 'index.mjs')).href;
+  const run = (env) => {
+    const out = execFileSync(process.execPath, ['--input-type=module', '-e',
+      `import { audit } from ${JSON.stringify(idx)}; const v = audit.verify(); process.stdout.write(JSON.stringify({ ok: v.ok, reason: v.reason || null }));`],
+      { env, encoding: 'utf8' });
+    return JSON.parse(out);
+  };
+
+  const withheld = run({ ...process.env, KEEPER_HOME: home, KEEPER_KEYCHAIN: '1', KEEPER_KEYCHAIN_FAKE: path.join(home, 'NO_SUCH_KC.json'), KEEPER_PASSPHRASE: '' });
+  assert.equal(withheld.ok, false, 'a withheld key on a tip-protected vault must NOT verify as intact (was the downgrade bypass)');
+  assert.ok(['audit-key-unavailable', 'audit-truncated-or-spliced'].includes(withheld.reason), `unexpected reason: ${withheld.reason}`);
+  process.env.KEEPER_HOME = HOME;
+});
+
+test('FIX5 FP guard: an empty vault (nothing recorded, no key/tip/marker) is not falsely flagged', () => {
+  // The real false-positive risk: a fresh vault whose key is unavailable must not
+  // be reported as tampered when there is simply nothing protected yet. (A vault
+  // that HAS entries always has a key+marker — you can't store secrets without a
+  // key — so the only no-marker case is an empty/fresh vault.)
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'keeper-empty-'));
+  fs.writeFileSync(path.join(home, 'audit.jsonl'), ''); // present, empty
+  const idx = pathToFileURL(path.join(process.cwd(), 'src', 'index.mjs')).href;
+  const out = execFileSync(process.execPath, ['--input-type=module', '-e',
+    `import { audit } from ${JSON.stringify(idx)}; const v = audit.verify(); process.stdout.write(JSON.stringify({ ok: v.ok, reason: v.reason || null }));`],
+    { env: { ...process.env, KEEPER_HOME: home, KEEPER_KEYCHAIN: '1', KEEPER_KEYCHAIN_FAKE: path.join(home, 'NO_KC.json'), KEEPER_PASSPHRASE: '' }, encoding: 'utf8' });
+  const v = JSON.parse(out);
+  assert.equal(v.ok, true, 'an empty audit with no key/tip/marker verifies ok (nothing to protect)');
   process.env.KEEPER_HOME = HOME;
 });
 

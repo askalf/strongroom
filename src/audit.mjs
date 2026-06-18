@@ -19,6 +19,10 @@ import { home, kpath } from './paths.mjs';
 
 const TIP_LABEL = 'keeper-audit-tip-v1';
 const tipPath = () => kpath('audit.tip.json');
+// Durable marker: set once a tip is first written, so verify() can tell a vault
+// whose tip protection was STRIPPED (key + tip deleted — the key-file-fallback
+// downgrade) apart from one that was never protected (no keychain / passphrase).
+const protectedMarker = () => kpath('audit.protected');
 
 // HMAC subkey derived from the vault master key (or null on a fresh / keychain-
 // unavailable vault — in which case we skip the tip entirely and never crash).
@@ -50,6 +54,7 @@ function writeTip(p, key) {
   } catch {
     try { fs.writeFileSync(dst, JSON.stringify(tip), { mode: 0o600 }); } catch {} // best effort
   }
+  try { if (!fs.existsSync(protectedMarker())) fs.writeFileSync(protectedMarker(), JSON.stringify({ since: new Date().toISOString() }), { mode: 0o600 }); } catch {}
 }
 
 function readTip() {
@@ -77,7 +82,18 @@ export function verify() {
   // one we fall back to the keyless chain result (and DON'T fail closed, so a
   // fresh / passphraseless vault still verifies its chain).
   const key = auditKey();
-  if (!key) return base;
+  if (!key) {
+    // No master key to authenticate the tip. A vault that was NEVER tip-protected
+    // (no keychain / passphrase ever) has no tip to check — its keyless chain
+    // result stands. But if it WAS protected and the key is now unavailable, the
+    // tip can't be authenticated: refuse to attest "intact" rather than silently
+    // downgrading to the forgeable keyless chain (the key-file-fallback downgrade).
+    if (!fs.existsSync(protectedMarker())) return base;
+    const tip0 = readTip();
+    const { n: tn, hash: th } = tailOf(p);
+    const mismatch = tip0 && (tn !== tip0.n || th !== tip0.hash);
+    return { ...base, ok: false, reason: mismatch ? 'audit-truncated-or-spliced' : 'audit-key-unavailable' };
+  }
 
   const { n, hash } = tailOf(p);
   const tip = readTip();
