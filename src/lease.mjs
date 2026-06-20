@@ -17,12 +17,25 @@ const write = (l) => { fs.mkdirSync(home(), { recursive: true }); fs.writeFileSy
 
 // Cross-process advisory lock (exclusive-create a lockfile) for atomic RMW.
 const sleepSync = (ms) => { try { Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms); } catch {} };
+const LOCK_STALE_MS = 10000; // a lockfile older than this was orphaned by a crashed holder
 function withLock(fn) {
   fs.mkdirSync(home(), { recursive: true });
   const lf = kpath('.leases.lock');
   let fd;
-  for (let i = 0; i < 400 && fd === undefined; i++) { try { fd = fs.openSync(lf, 'wx'); } catch { sleepSync(5); } }
-  try { return fn(); } finally { if (fd !== undefined) { try { fs.closeSync(fd); } catch {} try { fs.unlinkSync(lf); } catch {} } }
+  for (let i = 0; i < 400 && fd === undefined; i++) {
+    try { fd = fs.openSync(lf, 'wx'); }
+    catch {
+      // A holder killed mid-section leaves the lockfile forever. If it's stale,
+      // reclaim it so the atomic section can't be permanently disabled; else wait.
+      try { if (Date.now() - fs.statSync(lf).mtimeMs > LOCK_STALE_MS) fs.unlinkSync(lf); } catch {}
+      sleepSync(5);
+    }
+  }
+  // NEVER run the critical section without the lock — doing so reopens the
+  // single-use double-spend window the lock exists to close. Fail CLOSED: the
+  // egress callers (redeemLease/revokeLease) catch this and deny.
+  if (fd === undefined) throw new Error('keeper: lease lock unavailable');
+  try { return fn(); } finally { try { fs.closeSync(fd); } catch {} try { fs.unlinkSync(lf); } catch {} }
 }
 
 function evalLease(l, host, now = Date.now()) {
@@ -75,23 +88,28 @@ export function checkLease(id, { host } = {}) { return evalLease(read()[sha256(i
  *  if it returns null (decrypt-failed / no key), the use is NOT consumed, so a
  *  broken decrypt never burns a use. Keeps check + fetch + consume atomic. */
 export function redeemLease(id, { host } = {}, materialize = null) {
-  return withLock(() => {
-    const leases = read(), h = sha256(id);
-    const v = evalLease(leases[h], host);
-    if (!v.ok) return v;
-    let value;
-    if (materialize) {
-      value = materialize(v.lease);
-      if (value == null) return { ok: false, reason: 'decrypt-failed' }; // do NOT consume
-    }
-    leases[h].usesLeft--; // commit the consume only after success; record kept (0 → 'exhausted'), pruned on next mint
-    write(leases);
-    return { ok: true, lease: { ...v.lease }, value };
-  });
+  try {
+    return withLock(() => {
+      const leases = read(), h = sha256(id);
+      const v = evalLease(leases[h], host);
+      if (!v.ok) return v;
+      let value;
+      if (materialize) {
+        value = materialize(v.lease);
+        if (value == null) return { ok: false, reason: 'decrypt-failed' }; // do NOT consume
+      }
+      leases[h].usesLeft--; // commit the consume only after success; record kept (0 → 'exhausted'), pruned on next mint
+      write(leases);
+      return { ok: true, lease: { ...v.lease }, value };
+    });
+  } catch { return { ok: false, reason: 'locked' }; } // lock unavailable → fail CLOSED, never run unlocked
 }
 
 export function revokeLease(id) {
-  return withLock(() => { const leases = read(), h = sha256(id); const had = !!leases[h]; delete leases[h]; write(leases); return had; });
+  // Called from cleanup `finally` blocks — must not throw if the lock is stuck.
+  try {
+    return withLock(() => { const leases = read(), h = sha256(id); const had = !!leases[h]; delete leases[h]; write(leases); return had; });
+  } catch { return false; }
 }
 
 /** Outstanding leases — shown by fingerprint (we don't hold the raw ids). */

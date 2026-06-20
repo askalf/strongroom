@@ -36,6 +36,23 @@ test('SECURITY: a corrupt/tampered vault fails CLOSED (deny, never throw or leak
   assert.equal(vault.getSecret('C'), null, 'getSecret must never throw or return garbage');
 });
 
+test('SECURITY: an orphaned (stale) lease lock is reclaimed, never run unlocked', () => {
+  addSecret('L', 'lock-value');
+  const l = grant('L', { uses: 1 });
+  const lf = path.join(HOME, '.leases.lock');
+  fs.writeFileSync(lf, String(process.pid));        // a crashed holder's orphan lock
+  const old = (Date.now() - 60000) / 1000;          // 60s ago → past the stale threshold
+  fs.utimesSync(lf, old, old);
+  const r = redeem(l.id);
+  assert.equal(r.ok, true, 'a stale lock is stolen so redeem still works');
+  assert.equal(r.value, 'lock-value');
+  // Pre-fix the lock could not be acquired, so the critical section ran lock-less
+  // and the orphan file was left behind. Post-fix it is stolen, acquired, and
+  // released — its absence proves the section ran LOCKED, not unlocked.
+  assert.ok(!fs.existsSync(lf), 'the stale lock was reclaimed AND released');
+  assert.equal(redeem(l.id).ok, false, 'the single use was consumed exactly once');
+});
+
 test('SECURITY: ciphertext is bound to its name — no swap attack', () => {
   addSecret('LOW', 'low-value');
   addSecret('HIGH', 'high-value');
