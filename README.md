@@ -11,7 +11,7 @@ Agents need credentials — API keys, tokens, passwords — to do anything usefu
 - **redeem** — exchange a lease for the secret at the point of use, *iff* it's still valid (not expired, uses remaining, host in scope). A denial is audited and never burns a use.
 - **audit** — every grant / redeem / deny / revoke is **hash-chained** (shared with [warden](https://github.com/askalf/warden)) — editing or deleting a past access breaks `keeper audit --verify`.
 
-Completes the agent-security stack: **warden** contains the call · **canon** vets the tool · **keeper** holds the keys · **cordon** owns your prompts · **picket** owns your agent browser.
+Completes the agent-security stack: **warden** contains the call · **canon** vets the tool · **keeper** holds the keys.
 
 ## Quick start
 
@@ -124,7 +124,7 @@ const { ok, value } = redeem(lease.id, { host: 'api.stripe.com' });
 
 ## The agent-security stack
 
-Five composable layers, one defense: **[warden](https://github.com/askalf/warden)** contains the call · **[canon](https://github.com/askalf/canon)** vets the tool · **[keeper](https://github.com/askalf/keeper)** holds the keys *(you are here)* · **[cordon](https://github.com/askalf/cordon)** owns your prompts · **[picket](https://github.com/askalf/picket)** owns your agent browser. Run them together → **[agent-security-stack](https://github.com/askalf/agent-security-stack)**.
+Three composable layers, one defense: **[warden](https://github.com/askalf/warden)** contains the call · **[canon](https://github.com/askalf/canon)** vets the tool · **[keeper](https://github.com/askalf/keeper)** holds the keys *(you are here)*. Run all three together → **[agent-security-stack](https://github.com/askalf/agent-security-stack)**.
 
 ---
 Part of **[Own Your Stack](https://github.com/askalf)** — own your AI infrastructure instead of renting it. Built by Thomas Sprayberry.
