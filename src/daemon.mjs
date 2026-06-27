@@ -63,6 +63,14 @@ export function startDaemon({ socketPath = keeperSocket(), infoFile = daemonInfo
   const server = net.createServer(onConnection);
   server.on('error', (e) => onLog('listen error: ' + e.message));
   server.listen(socketPath, () => {
+    // Lock the socket to the owner the instant it exists, BEFORE the token is
+    // published. On Unix, connect() needs WRITE permission on the socket node, so
+    // a group/other-writable umask (e.g. 0777 under umask 000, 0755 under 0022)
+    // would let another local user reach this secret-serving endpoint. chmod 0600
+    // is the same owner-only lockdown every other keeper artifact already gets
+    // (vault / leases / audit / master key / the token-bearing daemon.json). On
+    // Windows the endpoint is a named pipe, not a filesystem node — nothing to chmod.
+    if (process.platform !== 'win32') { try { fs.chmodSync(socketPath, 0o600); } catch {} }
     try {
       fs.mkdirSync(path.dirname(infoFile), { recursive: true });
       fs.writeFileSync(infoFile, JSON.stringify({ socket: socketPath, pid: process.pid, token: tok, started: new Date().toISOString() }), { mode: 0o600 });

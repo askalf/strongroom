@@ -6,11 +6,13 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
+import { once } from 'node:events';
 import { fileURLToPath } from 'node:url';
 
 const HOME = fs.mkdtempSync(path.join(os.tmpdir(), 'keeper-sec-')); // 0700, unpredictable name
 process.env.KEEPER_HOME = HOME;
 const { addSecret, grant, redeem, vault } = await import('../src/index.mjs');
+const { startDaemon } = await import('../src/daemon.mjs');
 const here = path.dirname(fileURLToPath(import.meta.url));
 const read = (f) => fs.readFileSync(path.join(HOME, f), 'utf8');
 
@@ -74,4 +76,25 @@ test('SECURITY: a single-use lease cannot be double-spent under concurrency', as
   const results = await Promise.all(Array.from({ length: 16 }, run)); // all spawned before any awaited
   const oks = results.filter((r) => r === 'OK').length;
   assert.equal(oks, 1, `exactly one redeem may win a single-use lease — got ${oks}`);
+});
+
+test('SECURITY: the redeem-daemon socket is owner-only (0600) even under a permissive umask', { skip: process.platform === 'win32' }, async () => {
+  // The redeem-daemon endpoint hands out DECRYPTED secrets. On Unix, connect()
+  // needs WRITE permission on the socket node, so if the socket inherits a
+  // group/other-writable umask, another local user can reach it. Force the most
+  // permissive umask (000): WITHOUT the chmod the socket lands 0777 (this assert
+  // fails); WITH it the socket is 0600 — the same owner-only lockdown every other
+  // keeper artifact (vault / leases / audit / master key / daemon.json) already has.
+  const sockPath = path.join(HOME, 'sec-daemon.sock');
+  const prevUmask = process.umask(0o000);
+  let daemon;
+  try {
+    daemon = startDaemon({ socketPath: sockPath, infoFile: path.join(HOME, 'sec-daemon.json'), token: 'tok', onLog: () => {} });
+    await once(daemon.server, 'listening');
+    const mode = fs.statSync(sockPath).mode & 0o777;
+    assert.equal(mode & 0o077, 0, `daemon socket must be owner-only — got 0${mode.toString(8)} (group/other can connect)`);
+  } finally {
+    process.umask(prevUmask);
+    if (daemon) await new Promise((r) => daemon.close(r));
+  }
 });

@@ -4,6 +4,22 @@ All notable changes to **@askalf/keeper** are documented here. The format is
 based on [Keep a Changelog](https://keepachangelog.com/), and this project
 adheres to [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Fixed
+- **Redeem-daemon socket is now owner-only (`0600`).** The Unix domain socket
+  that serves decrypted secrets was created at the ambient umask and never
+  `chmod`ed, so it landed group/other-accessible (`0755` under the default
+  `umask 0022`, `0777` under `umask 000`). Because `connect()` on a Unix socket
+  requires write permission on the socket node, another local user could reach
+  the secret-serving endpoint — the one keeper artifact NOT locked down, while
+  the vault, leases, audit, master key, and the token-bearing `daemon.json` are
+  all already `0600`. The daemon now `chmod 0600`s the socket the instant it is
+  bound, before the capability token is published (no-op on Windows named pipes).
+  This is the local-socket-exposure class (CWE-732 / CWE-276) — the `docker.sock`
+  family of bugs. Pinned by a regression test that forces `umask 000` and asserts
+  the socket carries no group/other bits.
+
 ## [0.1.0] - 2026-06-16
 
 First public release — own your agent secrets: hand agents leases, not keys.
