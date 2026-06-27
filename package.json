@@ -18,13 +18,27 @@
     "demo:platform": "node demo/platform.mjs"
   },
   "dependencies": {
-    "@askalf/warden": "github:askalf/warden"
+    "@askalf/warden": "github:askalf/warden#2aaaa0cdcb2a21b13225c002f1879998ce88c7c2"
   },
-  "keywords": ["ai-agents", "agent-security", "secrets", "credentials", "vault", "least-privilege", "own-your-stack"],
+  "keywords": [
+    "ai-agents",
+    "agent-security",
+    "secrets",
+    "credentials",
+    "vault",
+    "least-privilege",
+    "own-your-stack"
+  ],
   "author": "Thomas Sprayberry",
   "license": "MIT",
   "repository": "github:askalf/keeper",
-  "engines": { "node": ">=20" },
-  "files": ["src"],
-  "publishConfig": { "access": "public" }
+  "engines": {
+    "node": ">=20"
+  },
+  "files": [
+    "src"
+  ],
+  "publishConfig": {
+    "access": "public"
+  }
 }
