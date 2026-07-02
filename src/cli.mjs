@@ -2,7 +2,7 @@
 // keeper CLI — store secrets, grant scoped short-lived leases, redeem at egress.
 import fs from 'node:fs';
 import { spawnSync } from 'node:child_process';
-import { addSecret, removeSecret, grant, redeem, revoke, vault, lease, audit } from './index.mjs';
+import { addSecret, removeSecret, grant, redeem, revoke, rekeyMasterKey, vault, lease, audit } from './index.mjs';
 import { startBroker } from './broker.mjs';
 import { startDaemon } from './daemon.mjs';
 import { redeemViaDaemon } from './client.mjs';
@@ -53,6 +53,9 @@ function usage() {
   keeper leases                        list outstanding leases
   keeper revoke <lease>                kill a lease
   keeper audit [--verify]              show the access log (--verify checks the hash chain)
+  keeper rekey [--to passphrase|keychain|file]
+                                       rotate the master key: re-encrypt every secret under a
+                                       new key (passphrase target reads KEEPER_NEW_PASSPHRASE)
   keeper keychain                      master-key backend status (set KEEPER_KEYCHAIN=1 to use the OS keychain)
 
   Master key: KEEPER_PASSPHRASE (scrypt, off-disk) · KEEPER_KEYCHAIN=1 (OS keychain) · else a 0600 key file.`);
@@ -100,6 +103,16 @@ const T = {
     const host = opt('--host', '127.0.0.1');
     startBroker({ port, host, onLog: (m) => err(c(C.dim, 'keeper: ' + m)) });
     return new Promise(() => {}); // run until killed
+  },
+  rekey() {
+    try {
+      const to = opt('--to', null);
+      const r = rekeyMasterKey({ to: to && to !== true ? to : undefined });
+      out(`${c(C.grn, '✓')} master key rotated (${r.from} → ${r.to}) · ${r.secrets} secret(s) re-encrypted`);
+      if (r.to === 'passphrase') err(c(C.dim, '  ↳ use the NEW passphrase in KEEPER_PASSPHRASE from now on'));
+      err(c(C.dim, '  ↳ restart any running keeper daemon/broker — they hold the old key and will fail closed'));
+      return 0;
+    } catch (e) { err(`${c(C.red, '✗')} ${e.message}`); return 1; }
   },
   keychain() {
     const on = process.env.KEEPER_KEYCHAIN === '1' || process.env.KEEPER_KEYCHAIN === 'true';
@@ -152,7 +165,7 @@ const T = {
 };
 
 function eventColor(ev) {
-  const m = { add: C.grn, grant: C.grn, redeem: C.yel, deny: C.red, sanitize: C.red, revoke: C.red, remove: C.dim };
+  const m = { add: C.grn, grant: C.grn, redeem: C.yel, deny: C.red, sanitize: C.red, revoke: C.red, remove: C.dim, rekey: C.yel };
   return c(m[ev] || C.rst, ev.padEnd(6));
 }
 
