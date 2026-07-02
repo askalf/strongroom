@@ -51,3 +51,13 @@ export function revoke(leaseId) {
   audit.record({ event: 'revoke', lease: fp(leaseId) });
   return had;
 }
+
+/** Rotate the master key (see vault.rekeyVault). Audited AFTER the swap, which
+ *  also re-MACs the audit's authenticated tip under the NEW key — the tip is
+ *  keyed off the master key, so a rotation that skipped this would leave
+ *  `keeper audit --verify` unable to authenticate its own log. */
+export function rekeyMasterKey(opts = {}) {
+  const r = vault.rekeyVault(opts || {});
+  audit.record({ event: 'rekey', secrets: r.secrets, from: r.from, to: r.to });
+  return r;
+}

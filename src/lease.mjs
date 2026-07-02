@@ -18,7 +18,9 @@ const write = (l) => { fs.mkdirSync(home(), { recursive: true }); fs.writeFileSy
 // Cross-process advisory lock (exclusive-create a lockfile) for atomic RMW.
 const sleepSync = (ms) => { try { Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms); } catch {} };
 const LOCK_STALE_MS = 10000; // a lockfile older than this was orphaned by a crashed holder
-function withLock(fn) {
+// Exported for the vault's rekey: rotating the master key must not interleave
+// with a redeem's decrypt (which runs inside this same lock via redeemLease).
+export function withLock(fn) {
   fs.mkdirSync(home(), { recursive: true });
   const lf = kpath('.leases.lock');
   let fd;

@@ -106,6 +106,7 @@ keeper is a vault, so its own security is the point:
   - else — a random key file in `~/.keeper` (`0600` + a restrictive ACL on Windows).
 
   Use the passphrase or the keychain for anything that matters.
+- **Rotation is built in** — `keeper rekey` re-encrypts every secret under a fresh master key, optionally switching key stores (`--to passphrase|keychain|file`; a passphrase target reads `KEEPER_NEW_PASSPHRASE`). It's atomic and fail-closed: a wrong current passphrase aborts with nothing changed, an interrupted swap is completed or discarded safely on the next run, retired key material (old salt / key file / keychain entry) is removed, and the audit's authenticated tip is re-MACed under the new key. Restart a running daemon/broker afterwards — they hold the old key and fail closed.
 - **Leases are bearer tokens** — only `sha256(id)` is stored; the raw id is returned once, to you. Reading `leases.json` therefore can't redeem anything.
 - **Single-use is atomic** — redeem is a check-and-consume under a cross-process lock, so concurrent redeems can't double-spend a one-use lease.
 - **Fail-closed** — a tampered, swapped, or wrong-key entry returns null and denies; it never throws or leaks garbage.
@@ -128,6 +129,7 @@ keeper serve [--socket <path>]     redeem-daemon: holds the master key, answers 
                                    over a local socket (KEEPER_DAEMON=1 on the keyless side)
 keeper leases · keeper revoke <lease> · keeper rm <name>
 keeper audit [--verify]            the access log, optionally chain-verified
+keeper rekey [--to passphrase|keychain|file]   rotate the master key (re-encrypts the vault)
 keeper keychain                    master-key backend status (KEEPER_KEYCHAIN=1 to use the OS keychain)
 ```
 

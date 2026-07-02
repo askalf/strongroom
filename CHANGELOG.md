@@ -7,6 +7,20 @@ adheres to [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Added
+- **Master-key rotation** — `keeper rekey [--to passphrase|keychain|file]`
+  re-encrypts every secret under a fresh master key, optionally migrating
+  between key stores (a passphrase target reads `KEEPER_NEW_PASSPHRASE`).
+  Runs under the same cross-process lock as redeem (a rotation can't
+  interleave with a decrypt), decrypts everything up front so a wrong
+  passphrase aborts with **nothing changed**, stages the re-encrypted vault
+  and commits it with an atomic rename, retires old key material (salt / key
+  file / keychain entry — the old keychain key is parked under a second
+  keychain account during the swap, never plaintext on disk), completes or
+  discards an interrupted swap on the next run, and re-MACs the audit's
+  authenticated tip under the new key (the tip is keyed off the master key —
+  a rotation that skipped this would break `keeper audit --verify`). Audited
+  as a `rekey` event. Running daemons/brokers hold the old key and fail
+  closed — restart them after rotating.
 - **Broker response sanitizer.** The broker injects the secret upstream — now it
   also makes sure the secret can't come *back*: if the upstream reflects the
   injected key (echo/debug endpoints, verbose errors, misconfigured proxies),
