@@ -40,7 +40,7 @@ Run the broker and the agent needs no key, no `exec`, no redeem — only a base-
 # bind a lease to ONE upstream, how to inject, which endpoints, and a rate cap
 LEASE=$(keeper grant OPENAI_API_KEY \
   --upstream https://api.openai.com --inject bearer \
-  --paths "/v1/chat/*,/v1/models" --rate 60 --ttl 600 --uses 100)
+  --paths "/v1/chat/*,/v1/models" --rate 60 --concurrency 4 --ttl 600 --uses 100)
 keeper broker --port 8771 &
 ```
 
@@ -56,8 +56,11 @@ For each call the broker redeems the lease (atomic + audited), makes the **real*
 **Scope it down further:**
 - `--paths "/v1/chat/*,/v1/models"` — restrict the lease to specific endpoints (glob; a chat lease can't reach billing or admin).
 - `--rate 60` — cap it at 60 requests/min.
+- `--concurrency 4` — cap simultaneous in-flight requests (a runaway or hijacked agent can't hold N parallel streams open through one lease).
 
-Both are enforced **before** the secret is redeemed — an out-of-scope or over-rate request gets `403` / `429`, consumes no use, and is audited.
+All three are enforced **before** the secret is redeemed — an out-of-scope, over-rate, or over-concurrency request gets `403` / `429`, consumes no use, and is audited.
+
+**And the response is sanitized on the way back.** If the upstream ever *reflects* the injected secret — an echo/debug endpoint, a verbose error, a misconfigured proxy — the broker redacts it from the relayed headers and body (`[keeper:redacted]`) and records a `sanitize` audit event. The scan is streaming-safe: SSE passes through event-by-event, and a secret split across chunk boundaries is still caught. Without this, a reflecting upstream would hand the raw key straight back into the agent's context, defeating the injection boundary.
 
 > **Windows / Git Bash:** MSYS auto-rewrites an argument that looks like a Unix absolute path, so a bare `--paths "/v1/models"` reaches keeper as `C:/Program Files/Git/v1/models` and silently never matches (every call then `403`s on `path`). A comma-list like `"/v1/chat/*,/v1/models"` is left alone, which is why it works. Prefix the run with `MSYS_NO_PATHCONV=1` (use drive-letter paths for any file args), or call keeper from PowerShell/cmd. Not a keeper bug — it mangles the arg before keeper sees it.
 

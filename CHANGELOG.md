@@ -6,7 +6,26 @@ adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+- **Broker response sanitizer.** The broker injects the secret upstream — now it
+  also makes sure the secret can't come *back*: if the upstream reflects the
+  injected key (echo/debug endpoints, verbose errors, misconfigured proxies),
+  the broker redacts it from the relayed response headers and body
+  (`[keeper:redacted]`) and records a `sanitize` audit event. The body scan is
+  streaming-safe (SSE flows through event-by-event; a secret split across chunk
+  boundaries is still caught) and the upstream request is pinned to
+  `accept-encoding: identity` so the scan always sees the real bytes.
+- **Per-lease concurrency cap** — `keeper grant … --concurrency <n>` bounds
+  *simultaneous* in-flight broker requests per lease (the existing `--rate`
+  bounds requests-per-minute). Enforced before redeem: an over-cap request gets
+  `429`, consumes no use, and is audited (`deny` / `concurrency`).
+
 ### Fixed
+- **Broker no longer relays a stale `content-encoding` header.** `fetch()`
+  hands the broker a *decoded* body; passing the upstream's `content-encoding`
+  through mislabeled the re-streamed response for any client that asked for
+  compression. The header is now stripped (and upstream compression is not
+  requested at all — see the sanitizer note above).
 - **Redeem-daemon socket is now owner-only (`0600`).** The Unix domain socket
   that serves decrypted secrets was created at the ambient umask and never
   `chmod`ed, so it landed group/other-accessible (`0755` under the default

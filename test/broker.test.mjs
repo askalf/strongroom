@@ -11,10 +11,13 @@ const { startBroker } = await import('../src/broker.mjs');
 const up = (server) => new Promise((res) => server.on('listening', () => res(server.address().port)));
 
 test('broker injects the leased secret upstream; the agent holds only the lease', async () => {
-  // stub "upstream API" that echoes what it received
+  // stub "upstream API" that RECORDS what it received (asserted server-side —
+  // echoing the secret back through the body would now just get it redacted)
+  let saw;
   const stub = http.createServer((req, res) => {
+    saw = { authorization: req.headers['authorization'] || null, path: req.url, hadXKey: !!req.headers['x-api-key'] };
     res.setHeader('content-type', 'application/json');
-    res.end(JSON.stringify({ authorization: req.headers['authorization'] || null, path: req.url, hadXKey: !!req.headers['x-api-key'] }));
+    res.end(JSON.stringify({ ok: true }));
   });
   stub.listen(0, '127.0.0.1');
   const stubPort = await up(stub);
@@ -27,10 +30,10 @@ test('broker injects the leased secret upstream; the agent holds only the lease'
 
   // the agent makes a normal API call with NO key — just the lease in the base URL
   const r = await fetch(`http://127.0.0.1:${brokerPort}/${lease.id}/v1/models`, { headers: { authorization: 'Bearer DUMMY-agent-has-no-real-key' } });
-  const echoed = await r.json();
+  assert.deepEqual(await r.json(), { ok: true }, 'upstream response relayed to the agent');
 
-  assert.equal(echoed.authorization, 'Bearer sk-the-real-key', 'upstream received the injected real secret');
-  assert.equal(echoed.path, '/v1/models', 'path forwarded to the bound upstream');
+  assert.equal(saw.authorization, 'Bearer sk-the-real-key', 'upstream received the injected real secret');
+  assert.equal(saw.path, '/v1/models', 'path forwarded to the bound upstream');
   assert.ok(!lease.id.includes('sk-the-real-key'), "the agent's lease is not the secret");
 
   stub.close(); broker.close();

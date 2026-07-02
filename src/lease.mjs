@@ -62,7 +62,7 @@ export function peekLease(id) {
 }
 
 export function mintLease(secret, opts = {}) {
-  const { ttlS = 300, uses = 1, host = null, upstream = null, inject = null, rate = null, paths = null } = opts || {};
+  const { ttlS = 300, uses = 1, host = null, upstream = null, inject = null, rate = null, paths = null, concurrency = null } = opts || {};
   const id = 'lease_' + crypto.randomBytes(18).toString('hex'); // 144-bit bearer token — returned, never stored raw
   return withLock(() => {
     const leases = read(), now = Date.now();
@@ -71,7 +71,7 @@ export function mintLease(secret, opts = {}) {
     // can only go to that host); rate caps req/min; paths scopes which endpoints it may hit.
     const rec = {
       secret, host: host || null, upstream: upstream || null, inject: inject || null,
-      rate: rate || null, paths: (paths && paths.length) ? paths : null,
+      rate: rate || null, paths: (paths && paths.length) ? paths : null, concurrency: concurrency || null,
       expiresAt: now + ttlS * 1000, usesLeft: uses, createdAt: now,
     };
     leases[sha256(id)] = rec;

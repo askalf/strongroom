@@ -1,24 +1,40 @@
 // Egress-injection broker. The agent points its HTTP client's base URL at
 //   http://127.0.0.1:<port>/<lease>
 // and makes normal API calls with NO key. For each request the broker checks the
-// lease (path allowlist + rate limit), redeems it (atomic + audited), then makes
-// the real upstream request itself — injecting the secret into a header at the
-// network boundary. The secret never enters the agent's context, and because the
-// lease is BOUND to one upstream (and optionally to specific paths), it can only
-// be injected toward that host / those endpoints — not an attacker URL.
+// lease (path allowlist + rate limit + concurrency cap), redeems it (atomic +
+// audited), then makes the real upstream request itself — injecting the secret
+// into a header at the network boundary. The secret never enters the agent's
+// context, and because the lease is BOUND to one upstream (and optionally to
+// specific paths), it can only be injected toward that host / those endpoints —
+// not an attacker URL. The RESPONSE is sanitized on the way back: if the
+// upstream ever reflects the injected secret (echo/debug endpoints, verbose
+// errors, misconfigured proxies), the broker redacts it from the relayed
+// headers and body — otherwise a reflecting upstream would hand the raw key
+// straight into the agent's context, defeating the injection boundary.
 //
 // Local-only (127.0.0.1), plaintext HTTP to the agent, real HTTPS upstream.
 import http from 'node:http';
 import crypto from 'node:crypto';
 import path from 'node:path';
-import { Readable } from 'node:stream';
+import { Readable, Transform } from 'node:stream';
 import { redeem, lease as leaseMod, audit } from './index.mjs';
 
 // Hop-by-hop + auth headers we never pass through from the agent (we inject auth).
+// accept-encoding is dropped too (identity is forced below): the response body
+// must arrive uncompressed so the secret scan sees the actual bytes.
 const DROP = new Set([
   'host', 'connection', 'keep-alive', 'proxy-authenticate', 'proxy-authorization', 'te',
   'trailer', 'transfer-encoding', 'upgrade', 'content-length', 'authorization', 'x-api-key', 'cookie',
+  'accept-encoding',
 ]);
+// Never relayed from the upstream response: fetch() hands us a DECODED body, so
+// a passed-through content-encoding would mislabel it — and we re-chunk anyway.
+const RESP_DROP = new Set(['content-encoding']);
+
+const REDACTED = '[keeper:redacted]';
+// Don't scan for secrets shorter than this — every real API key is far longer,
+// and redacting a tiny common substring would shred the response.
+const MIN_SCAN_LEN = 8;
 
 const fpLease = (id) => crypto.createHash('sha256').update(typeof id === 'string' ? id : String(id ?? '')).digest('hex').slice(0, 12);
 const send = (res, code, obj) => { res.statusCode = code; res.setHeader('content-type', 'application/json'); res.end(JSON.stringify(obj)); };
@@ -65,6 +81,46 @@ function withinRate(fp, perMin) {
   return true;
 }
 
+// Per-lease in-flight request count (concurrency cap, bound at grant). The rate
+// limit caps requests-per-minute; this caps SIMULTANEOUS requests — a runaway or
+// hijacked agent can't hold N parallel streams open through one lease.
+const inflight = new Map();
+
+// Redact every occurrence of the secret from a stream WITHOUT breaking
+// streaming (SSE stays event-by-event). A secret can split across chunk
+// boundaries, so each pass holds back the longest tail that is a prefix of the
+// secret — with a high-entropy key that tail is almost always empty, so bytes
+// flow through untouched and undelayed. Redaction only changes the body length;
+// content-length is never relayed (we re-chunk), so the response stays valid.
+function redactStream(secretBuf, onFirstHit) {
+  const marker = Buffer.from(REDACTED);
+  let carry = Buffer.alloc(0);
+  let hit = false;
+  return new Transform({
+    transform(chunk, _enc, cb) {
+      let buf = Buffer.concat([carry, chunk]);
+      const out = [];
+      let start = 0, idx;
+      while ((idx = buf.indexOf(secretBuf, start)) !== -1) {
+        out.push(buf.subarray(start, idx), marker);
+        start = idx + secretBuf.length;
+        if (!hit) { hit = true; onFirstHit(); }
+      }
+      const rest = buf.subarray(start);
+      let keep = 0;
+      for (let k = Math.min(rest.length, secretBuf.length - 1); k > 0; k--) {
+        if (rest.subarray(rest.length - k).equals(secretBuf.subarray(0, k))) { keep = k; break; }
+      }
+      carry = Buffer.from(rest.subarray(rest.length - keep));
+      out.push(rest.subarray(0, rest.length - keep));
+      cb(null, Buffer.concat(out));
+    },
+    // A held-back tail is only ever a PARTIAL prefix of the secret (a complete
+    // match would have been redacted above), so flushing it raw is safe.
+    flush(cb) { cb(null, carry.length ? carry : undefined); },
+  });
+}
+
 async function readBody(req) {
   if (req.method === 'GET' || req.method === 'HEAD') return undefined;
   const chunks = [];
@@ -99,6 +155,15 @@ export function startBroker({ port = 8771, host = '127.0.0.1', onLog = () => {} 
       if (meta.host && meta.host !== upHost) { audit.record({ event: 'deny', lease: fp, reason: 'host-scope', via: 'broker' }); return send(res, 403, { error: 'keeper: denied (host-scope)' }); }
       if (meta.paths && !pathAllowed(canon.path, meta.paths)) { audit.record({ event: 'deny', lease: fp, reason: 'path', path: canon.path, via: 'broker' }); return send(res, 403, { error: 'keeper: path not allowed' }); }
       if (!withinRate(fp, meta.rate)) { audit.record({ event: 'deny', lease: fp, reason: 'rate', via: 'broker' }); res.setHeader('retry-after', '60'); return send(res, 429, { error: 'keeper: rate limit exceeded' }); }
+      if (meta.concurrency && (inflight.get(fp) || 0) >= meta.concurrency) {
+        audit.record({ event: 'deny', lease: fp, reason: 'concurrency', via: 'broker' });
+        res.setHeader('retry-after', '1');
+        return send(res, 429, { error: 'keeper: concurrency limit exceeded' });
+      }
+      // Count this request in-flight from here until the response is done or the
+      // client goes away ('close' fires for both). Everything below ends `res`.
+      inflight.set(fp, (inflight.get(fp) || 0) + 1);
+      res.on('close', () => { const n = (inflight.get(fp) || 1) - 1; n > 0 ? inflight.set(fp, n) : inflight.delete(fp); });
 
       const body = await readBody(req);
       const r = redeem(lid, { host: upHost }); // atomic check-and-consume + audit, host-enforced
@@ -107,14 +172,29 @@ export function startBroker({ port = 8771, host = '127.0.0.1', onLog = () => {} 
       const url = r.upstream.replace(/\/$/, '') + canon.full;
       const headers = {};
       for (const [k, v] of Object.entries(req.headers)) if (!DROP.has(k.toLowerCase())) headers[k] = v;
+      headers['accept-encoding'] = 'identity'; // uncompressed response — required for the secret scan below
       injectAuth(headers, r.inject, r.value); // the only place the real secret touches the request
 
       const up = await fetch(url, { method: req.method, headers, body, redirect: 'manual', duplex: body ? 'half' : undefined });
       onLog(`${req.method} ${fp} → ${new URL(url).host}${canon.path} ${up.status}`); // never the secret or raw lease
 
+      // Relay the response, redacting the secret anywhere the upstream reflected
+      // it. One audit event per request per surface (header/body) — a reflected
+      // secret is an incident worth seeing in the log, not just silently fixed.
+      const scan = typeof r.value === 'string' && r.value.length >= MIN_SCAN_LEN ? r.value : null;
       res.statusCode = up.status;
-      up.headers.forEach((v, k) => { if (!DROP.has(k.toLowerCase())) res.setHeader(k, v); });
-      if (up.body) Readable.fromWeb(up.body).pipe(res); else res.end();
+      let headerHit = false;
+      up.headers.forEach((v, k) => {
+        if (DROP.has(k.toLowerCase()) || RESP_DROP.has(k.toLowerCase())) return;
+        if (scan && v.includes(scan)) { headerHit = true; v = v.split(scan).join(REDACTED); }
+        res.setHeader(k, v);
+      });
+      if (headerHit) audit.record({ event: 'sanitize', lease: fp, where: 'header', via: 'broker' });
+      if (!up.body) return res.end();
+      if (!scan) return void Readable.fromWeb(up.body).pipe(res);
+      Readable.fromWeb(up.body)
+        .pipe(redactStream(Buffer.from(scan), () => audit.record({ event: 'sanitize', lease: fp, where: 'body', via: 'broker' })))
+        .pipe(res);
     } catch (e) {
       send(res, 502, { error: 'keeper broker: ' + ((e && e.message) || String(e)) });
     }

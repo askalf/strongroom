@@ -30,7 +30,7 @@ export function grant(name, opts = {}) {
   opts = opts || {};
   if (!vault.hasSecret(name)) throw new Error(`no such secret: ${name}`);
   const l = lease.mintLease(name, opts);
-  audit.record({ event: 'grant', secret: name, lease: fp(l.id), host: l.host, upstream: l.upstream, rate: l.rate, paths: l.paths, ttlS: opts.ttlS ?? 300, uses: opts.uses ?? 1 });
+  audit.record({ event: 'grant', secret: name, lease: fp(l.id), host: l.host, upstream: l.upstream, rate: l.rate, paths: l.paths, concurrency: l.concurrency, ttlS: opts.ttlS ?? 300, uses: opts.uses ?? 1 });
   return l;
 }
 

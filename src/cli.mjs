@@ -39,7 +39,8 @@ function usage() {
   keeper grant <name> [opts]           mint a lease the agent holds instead of the key
        --ttl <s>=300  --uses <n>=1  --host <host>
        --upstream <base-url>  --inject <bearer|x-api-key|Header-Name>   (for the broker)
-       --rate <req/min>  --paths <glob,glob>   (broker: cap rate, scope endpoints)
+       --rate <req/min>  --paths <glob,glob>  --concurrency <n>
+                                       (broker: cap rate + simultaneous requests, scope endpoints)
   keeper redeem <lease> [--host <h>]   exchange a valid lease for the secret (egress side)
   keeper exec <lease> --as <ENV> [--host <h>] -- <cmd...>
                                        redeem + run <cmd> with the secret in its env only
@@ -86,11 +87,11 @@ const T = {
       const l = grant(pos[0], {
         ttlS: Number(opt('--ttl', 300)), uses: Number(opt('--uses', 1)), host: opt('--host', null) || null,
         upstream: opt('--upstream', null) || null, inject: opt('--inject', null) || null,
-        rate: Number(opt('--rate', 0)) || null,
+        rate: Number(opt('--rate', 0)) || null, concurrency: Number(opt('--concurrency', 0)) || null,
         paths: String(opt('--paths', '') || '').split(',').map((s) => s.trim()).filter(Boolean),
       });
       out(c(C.bold, l.id));
-      err(c(C.dim, `  ↳ ${pos[0]} · ${l.usesLeft} use(s) · ttl ${Math.round((l.expiresAt - Date.now()) / 1000)}s${l.host ? ' · host ' + l.host : ''}${l.upstream ? ' · → ' + l.upstream : ''}${l.rate ? ' · ' + l.rate + '/min' : ''}${l.paths ? ' · paths ' + l.paths.join(',') : ''}`));
+      err(c(C.dim, `  ↳ ${pos[0]} · ${l.usesLeft} use(s) · ttl ${Math.round((l.expiresAt - Date.now()) / 1000)}s${l.host ? ' · host ' + l.host : ''}${l.upstream ? ' · → ' + l.upstream : ''}${l.rate ? ' · ' + l.rate + '/min' : ''}${l.concurrency ? ' · ≤' + l.concurrency + ' in-flight' : ''}${l.paths ? ' · paths ' + l.paths.join(',') : ''}`));
       return 0;
     } catch (e) { err(`${c(C.red, '✗')} ${e.message}`); return 1; }
   },
@@ -151,7 +152,7 @@ const T = {
 };
 
 function eventColor(ev) {
-  const m = { add: C.grn, grant: C.grn, redeem: C.yel, deny: C.red, revoke: C.red, remove: C.dim };
+  const m = { add: C.grn, grant: C.grn, redeem: C.yel, deny: C.red, sanitize: C.red, revoke: C.red, remove: C.dim };
   return c(m[ev] || C.rst, ev.padEnd(6));
 }
 
