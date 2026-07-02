@@ -15,6 +15,8 @@ Completes the agent-security stack: **warden** contains the call · **canon** ve
 
 ## Quick start
 
+> Not yet on npm — installs straight from GitHub: `npm i -g github:askalf/keeper` (or prefix any command below with `npx -y github:askalf/keeper`).
+
 ```bash
 echo "sk-live-…" | keeper add OPENAI_API_KEY          # stored encrypted
 
