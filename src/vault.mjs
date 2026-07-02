@@ -148,10 +148,14 @@ export function rekeyVault({ to } = {}) {
     // Finish or discard an interrupted rekey. A staged vault the CURRENT key
     // fully decrypts (covering every live secret) is the committed new state —
     // adopt it; anything else is a stale pre-commit leftover — discard it.
-    if (fs.existsSync(vNew)) {
+    // Read once instead of exists-then-read (no check/use gap; we hold the
+    // lease lock here, but the single read makes the pattern race-free anyway).
+    let stagedRaw = null;
+    try { stagedRaw = fs.readFileSync(vNew, 'utf8'); } catch {} // absent → null
+    if (stagedRaw !== null) {
       let adopted = false;
       try {
-        const staged = JSON.parse(fs.readFileSync(vNew, 'utf8'));
+        const staged = JSON.parse(stagedRaw);
         const k = masterKey();
         const names = Object.keys(staged.secrets || {});
         const liveNames = Object.keys(read().secrets);
