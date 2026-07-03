@@ -1,0 +1,14 @@
+{
+  "name": "mcp-keeper-example",
+  "private": true,
+  "type": "module",
+  "description": "An MCP server that holds a keeper lease instead of an API key — the secret never crosses the MCP wire",
+  "scripts": {
+    "demo": "node agent_leased_flow.mjs",
+    "verify": "node verify_audit.mjs keeper-home"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "1.29.0",
+    "zod": "4.4.3"
+  }
+}

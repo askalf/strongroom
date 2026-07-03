@@ -1,0 +1,43 @@
+﻿
+> demo
+> node agent_leased_flow.mjs
+
+1. control plane: keeper add status:prod  (encrypted at rest in the vault)
+2. control plane: grant a scoped lease — this upstream only, /v1/status only, 120s, 10 uses
+   [broker] keeper broker on http://127.0.0.1:60318 — point your client base URL at http://127.0.0.1:60318/<lease>
+3. agent: real MCP client connects to the real (keyless) MCP server over stdio
+npm.cmd : [status-mcp] up — keyless, lease-held
+At line:1 char:81
++ ... p\codebase\keeper\examples\mcp-keeper"; npm.cmd run demo 2>&1 | Out-F ...
++                                             ~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: ([status-mcp] up — keyless, lease-held:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+4. agent: calls deployment_status through the MCP server (server → broker → upstream)
+   [broker] GET 2a0a69b08249 → 127.0.0.1:60317/v1/status 200
+5. agent: asks for the upstream credential — gets a LEASE, never a key
+   [broker] GET 2a0a69b08249 → 127.0.0.1:60317/v1/status 200
+
+── proofs ─────────────────────────────────────────────────────────
+   ✓ genuine MCP round-trip: client listed the server's tools over stdio
+   ✓ the tool call completed — server reached the upstream through its lease
+   ✓ upstream only ever saw the REAL key — injected by the broker at egress
+   ✓ the MCP server process was spawned KEYLESS — no key in its env, only the lease
+   ✓ the granted credential works: the agent used the lease-backed base URL directly
+   ✓ the wire was under observation (9 JSON-RPC frames captured)
+   ✓ the REAL key appears in ZERO frames — the secret never crossed the MCP wire
+   ✓ the LEASE crossed the wire instead — a scoped, expiring, revocable capability
+6. control plane: keeper revoke — server tool AND direct access die, key unrotated
+   ✓ post-revoke tool call → upstream denied, surfaced as a tool error
+   ✓ post-revoke direct call → 403 denied
+   ✓ nothing further ever reached the upstream
+   ✓ audit chain verifies intact (7 entries)
+   ✓ audit records 'add'
+   ✓ audit records 'grant'
+   ✓ audit records 'redeem'
+   ✓ audit records 'deny'
+   ✓ audit records 'revoke'
+
+audit trail: add → grant → redeem → redeem → revoke → deny → deny
+
+MCP_KEEPER_PASS

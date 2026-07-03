@@ -1,0 +1,10 @@
+﻿Run captured: 2026-07-03T02:26:22Z
+OS: Windows 11 x86_64 (PowerShell)
+node: v22.22.0
+keeper: commit d746aa8 (branched from master d746aa8)
+
+Pinned dependency versions (npm ls, top level):
+mcp-keeper-example@ C:\Users\masterm1nd\Desktop\codebase\keeper\examples\mcp-keeper
++-- @modelcontextprotocol/sdk@1.29.0
+`-- zod@4.4.3
+

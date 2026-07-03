@@ -1,0 +1,4 @@
+# runtime artifacts from running the example (evidence/ is checked in on purpose)
+/node_modules/
+/keeper-home/
+/package-lock.json
