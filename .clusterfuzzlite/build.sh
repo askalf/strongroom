@@ -5,7 +5,9 @@
 # and never leaves a climbing `..`, and the egress lease entry points always
 # fail closed on a hostile id.
 cd "$SRC/strongroom"
-npm install --no-audit --no-fund
+# npm ci verifies every integrity hash in the committed lockfile
+# (Scorecard Pinned-Dependencies); Jazzer comes in as the locked devDependency.
+npm ci --no-audit --no-fund
 
 for target in canonicalize path_allowed lease_id; do
   compile_javascript_fuzzer strongroom "fuzz/${target}.fuzz.js" --sync
