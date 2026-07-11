@@ -11,6 +11,14 @@ adheres to [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Added
+- **Operator-set grant ceiling** — `KEEPER_MAX_TTL` (seconds) and
+  `KEEPER_MAX_USES` cap every lease minted from the vault, enforced in the
+  shared mint path so the CLI and the library `grant()` obey the same policy.
+  An over-cap grant is **rejected** with an error naming the cap (never
+  silently clamped) and audited as a `deny`/`policy` event. Unset = no
+  ceiling (unchanged behavior). Zero, negative, and non-numeric `--ttl` /
+  `--uses` are now always rejected — a `NaN` previously minted a lease that
+  never expired and never exhausted. (#29)
 - **Master-key rotation** — `keeper rekey [--to passphrase|keychain|file]`
   re-encrypts every secret under a fresh master key, optionally migrating
   between key stores (a passphrase target reads `KEEPER_NEW_PASSPHRASE`).

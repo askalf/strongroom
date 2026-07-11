@@ -38,6 +38,7 @@ function usage() {
   keeper rm <name>                     delete a secret
   keeper grant <name> [opts]           mint a lease the agent holds instead of the key
        --ttl <s>=300  --uses <n>=1  --host <host>
+                                       (KEEPER_MAX_TTL / KEEPER_MAX_USES, if set, cap every grant)
        --upstream <base-url>  --inject <bearer|x-api-key|Header-Name>   (for the broker)
        --rate <req/min>  --paths <glob,glob>  --concurrency <n>
                                        (broker: cap rate + simultaneous requests, scope endpoints)

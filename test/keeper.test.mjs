@@ -31,9 +31,11 @@ test('lease: host scope is enforced, and a denial does not burn a use', () => {
   assert.equal(redeem(l.id, { host: 'api.openai.com' }).ok, true); // the wrong-host denial didn't consume it
 });
 
-test('lease: expired lease is denied', () => {
+test('lease: expired lease is denied', async () => {
   addSecret('S3', 'val3');
-  assert.equal(redeem(grant('S3', { ttlS: -1 }).id).reason, 'expired');
+  const l = grant('S3', { ttlS: 0.01 }); // 10ms — a non-positive ttl is now rejected at mint
+  await new Promise((r) => setTimeout(r, 30));
+  assert.equal(redeem(l.id).reason, 'expired');
 });
 
 test('lease: revoke kills it immediately', () => {

@@ -63,8 +63,27 @@ export function peekLease(id) {
   return { ok: true, lease: l };
 }
 
+// Operator ceiling: a positive number in KEEPER_MAX_TTL / KEEPER_MAX_USES caps
+// every lease minted from this vault; unset/invalid → no ceiling (opt-in).
+const cap = (name) => { const v = Number(process.env[name]); return Number.isFinite(v) && v > 0 ? v : null; };
+
 export function mintLease(secret, opts = {}) {
-  const { ttlS = 300, uses = 1, host = null, upstream = null, inject = null, rate = null, paths = null, concurrency = null } = opts || {};
+  const { host = null, upstream = null, inject = null, rate = null, paths = null, concurrency = null } = opts || {};
+  // Coerce once so the floor/ceiling checks see real numbers (the CLI already
+  // passes Number(...); a library caller may hand us strings).
+  const ttlS = Number(opts?.ttlS ?? 300), uses = Number(opts?.uses ?? 1);
+  // Floor: a zero/negative lease is dead on arrival — and a NaN one is IMMORTAL
+  // (`now > NaN` and `NaN <= 0` are both false, so it would never expire and
+  // never exhaust). Reject instead of minting.
+  if (!Number.isFinite(ttlS) || ttlS <= 0) throw new Error(`keeper: --ttl must be a positive number of seconds (got ${opts?.ttlS})`);
+  if (!Number.isFinite(uses) || uses <= 0) throw new Error(`keeper: --uses must be a positive number (got ${opts?.uses})`);
+  // Ceiling: enforced here — the one chokepoint every mint path shares (CLI,
+  // library grant(), future callers) — so "leases from this vault stay small"
+  // is vault policy, not caller discipline. Over-cap REJECTS (explicit and
+  // auditable) rather than silently clamping to the cap.
+  const maxTtl = cap('KEEPER_MAX_TTL'), maxUses = cap('KEEPER_MAX_USES');
+  if (maxTtl && ttlS > maxTtl) throw new Error(`keeper: --ttl ${ttlS} exceeds KEEPER_MAX_TTL=${maxTtl}`);
+  if (maxUses && uses > maxUses) throw new Error(`keeper: --uses ${uses} exceeds KEEPER_MAX_USES=${maxUses}`);
   const id = 'lease_' + crypto.randomBytes(18).toString('hex'); // 144-bit bearer token — returned, never stored raw
   return withLock(() => {
     const leases = read(), now = Date.now();

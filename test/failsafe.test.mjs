@@ -34,10 +34,16 @@ test('addSecret tolerates a non-string name and still round-trips', () => {
   for (const v of [42, null, 10n, { x: 1 }, circular]) assert.doesNotThrow(() => addSecret('v', v));
 });
 
-test('grant tolerates null/odd opts; raises only the missing-secret precondition', () => {
+test('grant tolerates null/odd opts; invalid ttl/uses and a missing secret are loud, intentional errors', () => {
   addSecret('S', 'sk-live');
   assert.doesNotThrow(() => grant('S', null), 'grant threw on null opts');
-  assert.doesNotThrow(() => grant('S', { ttlS: 'soon', uses: 'lots', paths: 'x', rate: {} }), 'grant threw on odd opts');
+  // non-numeric ttl/uses are REJECTED, not tolerated — a NaN ttl/uses would mint
+  // an IMMORTAL lease (`now > NaN` and `NaN <= 0` are both false: never expires,
+  // never exhausts), the exact opposite of what a lease is for
+  assert.throws(() => grant('S', { ttlS: 'soon' }), /--ttl must be a positive number/);
+  assert.throws(() => grant('S', { uses: 'lots' }), /--uses must be a positive number/);
+  // other odd opts are still coerced/ignored, never a crash
+  assert.doesNotThrow(() => grant('S', { paths: 'x', rate: {} }), 'grant threw on odd opts');
   // a real lease still works end to end
   const l = grant('S', { ttlS: 60, uses: 1 });
   assert.ok(l.id.startsWith('lease_'));

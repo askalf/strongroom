@@ -121,6 +121,7 @@ strongroom is a vault, so its own security is the point:
 
   Use the passphrase or the keychain for anything that matters.
 - **Rotation is built in** — `strongroom rekey` re-encrypts every secret under a fresh master key, optionally switching key stores (`--to passphrase|keychain|file`; a passphrase target reads `KEEPER_NEW_PASSPHRASE`). It's atomic and fail-closed: a wrong current passphrase aborts with nothing changed, an interrupted swap is completed or discarded safely on the next run, retired key material (old salt / key file / keychain entry) is removed, and the audit's authenticated tip is re-MACed under the new key. Restart a running daemon/broker afterwards — they hold the old key and fail closed.
+- **Operator ceiling on grants** — set `KEEPER_MAX_TTL` (seconds) and/or `KEEPER_MAX_USES` and no lease minted from this vault — CLI **or** library — may exceed them. An over-cap grant is **rejected** with an error naming the cap (never silently clamped) and audited as a `deny`/`policy` event, so "leases stay small" is vault policy, not caller discipline. Unset = no ceiling (unchanged behavior). Zero, negative, or non-numeric `--ttl`/`--uses` are always rejected — a NaN would otherwise mint a lease that never expires.
 - **Leases are bearer tokens** — only `sha256(id)` is stored; the raw id is returned once, to you. Reading `leases.json` therefore can't redeem anything.
 - **Single-use is atomic** — redeem is a check-and-consume under a cross-process lock, so concurrent redeems can't double-spend a one-use lease.
 - **Fail-closed** — a tampered, swapped, or wrong-key entry returns null and denies; it never throws or leaks garbage.
@@ -136,6 +137,7 @@ strongroom add <name>                  store a secret (stdin, or --value=)
 strongroom ls                          list secret names (never values)
 strongroom grant <name> [--ttl --uses --host]                        mint a lease
               [--upstream --inject --paths --rate --concurrency]  (broker scoping)
+              (KEEPER_MAX_TTL / KEEPER_MAX_USES, if set, cap every grant — over-cap is rejected + audited)
 strongroom redeem <lease> [--host]     exchange a valid lease for the secret (egress side)
 strongroom exec <lease> --as <ENV> -- <cmd...>  redeem + run <cmd> with the secret in its env only
 strongroom broker [--port 8771]        egress-injection proxy (base-URL swap, zero key in the agent)

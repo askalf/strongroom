@@ -29,7 +29,14 @@ export function removeSecret(name) {
 export function grant(name, opts = {}) {
   opts = opts || {};
   if (!vault.hasSecret(name)) throw new Error(`no such secret: ${name}`);
-  const l = lease.mintLease(name, opts);
+  let l;
+  try { l = lease.mintLease(name, opts); }
+  catch (e) {
+    // An over-cap or invalid grant attempt is a policy event worth seeing in
+    // the tamper-evident log (the message names the cap, never a secret value).
+    audit.record({ event: 'deny', secret: name, reason: 'policy', detail: e.message });
+    throw e;
+  }
   audit.record({ event: 'grant', secret: name, lease: fp(l.id), host: l.host, upstream: l.upstream, rate: l.rate, paths: l.paths, concurrency: l.concurrency, ttlS: opts.ttlS ?? 300, uses: opts.uses ?? 1 });
   return l;
 }
