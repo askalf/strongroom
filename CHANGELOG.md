@@ -62,8 +62,26 @@ adheres to [Semantic Versioning](https://semver.org/).
   *simultaneous* in-flight broker requests per lease (the existing `--rate`
   bounds requests-per-minute). Enforced before redeem: an over-cap request gets
   `429`, consumes no use, and is audited (`deny` / `concurrency`).
+- **Continuous fuzzing (ClusterFuzzLite).** The security-critical broker parsers
+  (request-target canonicalizer, path allowlist) and the egress lease
+  fail-closed contract are now fuzzed with Jazzer.js — weekly in CI
+  (`.github/workflows/cflite.yml`) and locally via `npm run fuzz` (targets in
+  `./fuzz`). The two Fixed items below were found this way.
 
 ### Fixed
+- **Broker path canonicalizer no longer leaves a climbing `..`.** A relative
+  request target (e.g. `..`) canonicalized to `/..` because the path was
+  normalized *before* being anchored to root; it is now anchored first
+  (`normalize('/' + path)`) so every `..` is clamped at `/`. Not reachable
+  through the broker today (its URL parse already yields a leading `/`), but the
+  canonicalizer is now correct for any input — defense in depth for the
+  allowlist. (found by fuzzing)
+- **Broker path allowlist no longer throws on a `?` in a `--paths` glob.** The
+  regex-escape set missed `?`, so a pattern containing it compiled to an invalid
+  regex (`SyntaxError: Nothing to repeat`) and 502-ed every request on that
+  lease. `?` is now escaped as a literal (only `*` is a keeper wildcard), and any
+  un-compilable pattern now matches nothing (fail closed) instead of throwing.
+  (found by fuzzing)
 - **Broker no longer relays a stale `content-encoding` header.** `fetch()`
   hands the broker a *decoded* body; passing the upstream's `content-encoding`
   through mislabeled the re-streamed response for any client that asked for

@@ -15,6 +15,7 @@
   },
   "scripts": {
     "test": "node --test",
+    "fuzz": "node fuzz/run.mjs",
     "demo": "node demo/demo.mjs",
     "demo:platform": "node demo/platform.mjs"
   },
@@ -41,5 +42,8 @@
   ],
   "publishConfig": {
     "access": "public"
+  },
+  "devDependencies": {
+    "@jazzer.js/core": "^4.0.0"
   }
 }

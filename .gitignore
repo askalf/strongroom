@@ -4,3 +4,9 @@ node_modules/
 .keeper/
 
 *.tmp
+
+# fuzzing artifacts (Jazzer.js / libFuzzer)
+crash-*
+timeout-*
+oom-*
+fuzz/corpus/

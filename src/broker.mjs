@@ -51,23 +51,34 @@ function injectAuth(headers, inject, secret) {
 // off the query, percent-decode the path, resolve `.`/`..` segments, and force a
 // leading `/`. Net: `/v1/chat/../admin/keys` → `/v1/admin/keys` so a `..` escape
 // is evaluated against the allowlist as the path that actually leaves the box.
-function canonicalize(rest) {
+export function canonicalize(rest) { // exported for the fuzz harness (test/fuzz)
   const raw = rest || '/';
   const qi = raw.indexOf('?');
   const rawPath = qi >= 0 ? raw.slice(0, qi) : raw;
   const query = qi >= 0 ? raw.slice(qi) : ''; // includes the leading '?'
   let decoded;
   try { decoded = decodeURIComponent(rawPath); } catch { decoded = rawPath; } // malformed %xx → use raw, never throw
-  let norm = path.posix.normalize(decoded);
-  if (!norm.startsWith('/')) norm = '/' + norm; // normalize may strip a leading '..' to '' — re-anchor
+  // Anchor to root BEFORE normalizing: posix.normalize only resolves `..`
+  // against an absolute root, so normalizing first and prepending `/` after
+  // would leave a climbing `/..` for a relative target (e.g. `..` → `/..`).
+  // Normalizing an already-absolute path clamps every `..` at `/`.
+  const norm = path.posix.normalize('/' + decoded);
   return { path: norm, query, full: norm + query };
 }
 
 // Path allowlist — glob patterns ( * matches any non-query, non-`/` chars ). The
 // non-`/`-crossing `*` means a `/v1/chat/*` lease scopes to ONE path segment's
 // worth of endpoint under /v1/chat/, not the whole host. Empty = allow all.
-function pathAllowed(p, patterns) {
-  return patterns.some((g) => new RegExp('^' + g.replace(/[.+^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '[^/?]*') + '$').test(p));
+export function pathAllowed(p, patterns) { // exported for the fuzz harness (test/fuzz)
+  return patterns.some((g) => {
+    // Escape every regex metacharacter (including `?`, which is NOT a keeper
+    // glob wildcard — only `*` is) so a literal `?` in a pattern can't produce
+    // an invalid regex; then turn `*` into a non-`/`, non-`?` wildcard.
+    let re;
+    try { re = new RegExp('^' + g.replace(/[.+^${}()|[\]\\?]/g, '\\$&').replace(/\*/g, '[^/?]*') + '$'); }
+    catch { return false; } // an un-compilable pattern matches nothing — fail closed, never throw
+    return re.test(p);
+  });
 }
 
 // Per-lease sliding-window rate limit (req/min), in this broker process.

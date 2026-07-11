@@ -1,0 +1,3 @@
+# Shell scripts must stay LF — a CRLF shebang breaks in the OSS-Fuzz / cflite
+# Linux container (`#!/bin/bash\r` → bad interpreter).
+*.sh text eol=lf
