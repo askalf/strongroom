@@ -109,6 +109,20 @@ A platform that runs agents on remote devices shouldn't ship a long-lived key to
 - the **device** receives only the lease id and runs through `strongroom broker` — the key is injected at egress, never written to the device;
 - a compromised device yields a *lease* (scoped, expiring, revocable), not a key. `strongroom revoke <lease>` kills it instantly — no production-key rotation.
 
+**The control plane never scrapes human output.** `grant`, `leases`, `ls`, and `audit` take `--json` and put exactly **one JSON value on stdout** — no ANSI, no prose, no stderr summary:
+
+```bash
+strongroom grant TASK_API_KEY --ttl 300 --uses 50 --upstream https://api.example.com --json
+# → {"id":"lease_…","secret":"TASK_API_KEY","usesLeft":50,"expiresAt":1720000000000,"ttlS":300,
+#    "host":null,"upstream":"https://api.example.com","inject":null,"rate":null,"paths":null,"concurrency":null}
+strongroom leases --json          # → array of secret-safe lease records (fingerprints, never raw ids)
+strongroom ls --json              # → ["TASK_API_KEY", …]
+strongroom audit --json           # → the parsed event array
+strongroom audit --verify --json  # → {"ok":true,"entries":n} | {"ok":false,"reason":"audit-tip-forged"} — exit code 0/1 preserved
+```
+
+`grant --json` returns the same one-time id + metadata the human path already returns — just machine-readable. Without `--json`, output is unchanged.
+
 See it end to end: `npm run demo:platform`.
 
 ## Security model
@@ -136,17 +150,18 @@ What it is **not**: a defense against an attacker who already has your passphras
 
 ```
 strongroom add <name>                  store a secret (stdin, or --value=)
-strongroom ls                          list secret names (never values)
+strongroom ls [--json]                 list secret names (never values)
 strongroom grant <name> [--ttl --uses --host]                        mint a lease
               [--upstream --inject --paths --rate --concurrency]  (broker scoping)
               (KEEPER_MAX_TTL / KEEPER_MAX_USES, if set, cap every grant — over-cap is rejected + audited)
+              [--json]                 one machine-readable JSON object on stdout
 strongroom redeem <lease> [--host]     exchange a valid lease for the secret (egress side)
 strongroom exec <lease> --as <ENV> -- <cmd...>  redeem + run <cmd> with the secret in its env only
 strongroom broker [--port 8771]        egress-injection proxy (base-URL swap, zero key in the agent)
 strongroom serve [--socket <path>]     redeem-daemon: holds the master key, answers lease→secret
                                    over a local socket (KEEPER_DAEMON=1 on the keyless side)
-strongroom leases · strongroom revoke <lease> · strongroom rm <name>
-strongroom audit [--verify]            the access log, optionally chain-verified
+strongroom leases [--json] · strongroom revoke <lease> · strongroom rm <name>
+strongroom audit [--verify] [--json]   the access log, optionally chain-verified
 strongroom rekey [--to passphrase|keychain|file]   rotate the master key (re-encrypts the vault)
 strongroom keychain                    master-key backend status (KEEPER_KEYCHAIN=1 to use the OS keychain)
 ```

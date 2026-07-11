@@ -20,6 +20,10 @@ const opt = (name, def) => {
   return eq ? eq.slice(name.length + 1) : def;
 };
 const pos = pre.slice(1).filter((a) => !a.startsWith('--'));
+// Machine contract (grant/leases/ls/audit): stdout carries exactly ONE JSON
+// value — no ANSI, no prose, no stderr summary — so a control plane scripting
+// keeper never scrapes human output. Default (no --json) output is unchanged.
+const asJson = Boolean(opt('--json', false));
 
 const tty = process.stdout.isTTY;
 const C = { red: '\x1b[31m', grn: '\x1b[32m', yel: '\x1b[33m', dim: '\x1b[2m', bold: '\x1b[1m', rst: '\x1b[0m' };
@@ -34,7 +38,7 @@ function usage() {
   out(`${c(C.bold, 'keeper')} — own your agent secrets · vault · lease · redeem · audit
 
   keeper add <name>                    store a secret (value from stdin, or --value=)
-  keeper ls                            list secret names (never values)
+  keeper ls [--json]                   list secret names (never values)
   keeper rm <name>                     delete a secret
   keeper grant <name> [opts]           mint a lease the agent holds instead of the key
        --ttl <s>=300  --uses <n>=1  --host <host>
@@ -42,6 +46,7 @@ function usage() {
        --upstream <base-url>  --inject <bearer|x-api-key|Header-Name>   (for the broker)
        --rate <req/min>  --paths <glob,glob>  --concurrency <n>
                                        (broker: cap rate + simultaneous requests, scope endpoints)
+       --json                          machine-readable: ONE JSON object on stdout, nothing else
   keeper redeem <lease> [--host <h>]   exchange a valid lease for the secret (egress side)
   keeper exec <lease> --as <ENV> [--host <h>] -- <cmd...>
                                        redeem + run <cmd> with the secret in its env only
@@ -53,9 +58,9 @@ function usage() {
   keeper serve [--socket <path>]       run the redeem-daemon (HOLDS the key) on a local socket;
                                        a doer sets KEEPER_DAEMON=1 + KEEPER_SOCKET/_TOKEN and
                                        redeems its leases without ever holding the master key
-  keeper leases                        list outstanding leases
+  keeper leases [--json]               list outstanding leases
   keeper revoke <lease>                kill a lease
-  keeper audit [--verify]              show the access log (--verify checks the hash chain)
+  keeper audit [--verify] [--json]     show the access log (--verify checks the hash chain)
   keeper rekey [--to passphrase|keychain|file]
                                        rotate the master key: re-encrypt every secret under a
                                        new key (passphrase target reads KEEPER_NEW_PASSPHRASE)
@@ -82,6 +87,7 @@ const T = {
   },
   ls() {
     const names = vault.listSecrets();
+    if (asJson) return (out(JSON.stringify(names)), 0);
     if (!names.length) return (out(c(C.dim, 'vault is empty')), 0);
     names.forEach((n) => out(`${c(C.grn, '●')} ${n}`));
     return 0;
@@ -96,6 +102,16 @@ const T = {
         rate: Number(opt('--rate', 0)) || null, concurrency: Number(opt('--concurrency', 0)) || null,
         paths: String(opt('--paths', '') || '').split(',').map((s) => s.trim()).filter(Boolean),
       });
+      if (asJson) {
+        // The same one-time id + metadata the human path returns — just
+        // machine-readable, stdout-only. Nothing new is persisted or leaked.
+        out(JSON.stringify({
+          id: l.id, secret: l.secret, usesLeft: l.usesLeft, expiresAt: l.expiresAt,
+          ttlS: Math.round((l.expiresAt - l.createdAt) / 1000),
+          host: l.host, upstream: l.upstream, inject: l.inject, rate: l.rate, paths: l.paths, concurrency: l.concurrency,
+        }));
+        return 0;
+      }
       out(c(C.bold, l.id));
       err(c(C.dim, `  ↳ ${pos[0]} · ${l.usesLeft} use(s) · ttl ${Math.round((l.expiresAt - Date.now()) / 1000)}s${l.host ? ' · host ' + l.host : ''}${l.upstream ? ' · → ' + l.upstream : ''}${l.rate ? ' · ' + l.rate + '/min' : ''}${l.concurrency ? ' · ≤' + l.concurrency + ' in-flight' : ''}${l.paths ? ' · paths ' + l.paths.join(',') : ''}`));
       return 0;
@@ -150,12 +166,19 @@ const T = {
   },
   leases() {
     const ls = lease.listLeases();
+    if (asJson) return (out(JSON.stringify(ls)), 0); // already secret-safe: fingerprint, never the raw id
     if (!ls.length) return (out(c(C.dim, 'no outstanding leases')), 0);
     ls.forEach((l) => out(`${l.expired ? c(C.dim, '○') : c(C.grn, '●')} ${c(C.bold, l.fingerprint)} ${c(C.dim, `→ ${l.secret} · ${l.usesLeft} use(s)${l.expired ? ' · EXPIRED' : ''}${l.host ? ' · ' + l.host : ''}`)}`));
     return 0;
   },
   revoke() { if (!pos[0]) return (usage(), 2); out(revoke(pos[0]) ? `${c(C.grn, '✓')} revoked ${pos[0]}` : c(C.dim, `no such lease: ${pos[0]}`)); return 0; },
   audit() {
+    if (asJson) {
+      // --verify → the verdict object ({ ok, entries } | { ok:false, reason|at }),
+      // exit code preserved; plain → the parsed event array (mirrors audit.read()).
+      if (opt('--verify', false)) { const v = audit.verify(); out(JSON.stringify(v)); return v.ok ? 0 : 1; }
+      return (out(JSON.stringify(audit.read())), 0);
+    }
     const events = audit.read();
     for (const e of events) out(`${c(C.dim, e.ts)}  ${eventColor(e.event)} ${e.secret || e.lease || ''}${e.reason ? c(C.red, ' (' + e.reason + ')') : ''}${e.host ? c(C.dim, ' · ' + e.host) : ''}`);
     if (opt('--verify', false)) {
