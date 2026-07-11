@@ -28,6 +28,14 @@ adheres to [Semantic Versioning](https://semver.org/).
   could permanently wedge a concurrency-capped lease until a broker restart.
   A client that disconnects mid-stream now also aborts the upstream request,
   freeing the upstream socket. (#27)
+- **`--json` machine contract** for `grant`, `leases`, `ls`, and `audit`
+  (incl. `audit --verify`): stdout carries exactly one JSON value — no ANSI,
+  no prose, and no stderr summary — so a control plane dispatching leases to
+  a fleet scripts keeper instead of scraping decorated output. `grant --json`
+  returns the same one-time lease id + metadata the human path already
+  returns; `leases --json` stays secret-safe (fingerprints, never raw ids);
+  `audit --verify --json` surfaces `{ ok, entries }` / `{ ok:false, reason }`
+  with the 0/1 exit code preserved. Default output is unchanged. (#28)
 - **Master-key rotation** — `keeper rekey [--to passphrase|keychain|file]`
   re-encrypts every secret under a fresh master key, optionally migrating
   between key stores (a passphrase target reads `KEEPER_NEW_PASSPHRASE`).
