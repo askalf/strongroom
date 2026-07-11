@@ -19,7 +19,10 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        sanitizer: [none] # Jazzer.js (pure JS) — no native sanitizer
+        # ClusterFuzzLite requires address|memory|undefined|coverage; for a pure
+        # JS (Jazzer.js) project the native sanitizer is a no-op, so `address`
+        # is the conventional choice.
+        sanitizer: [address]
     steps:
       - name: Build fuzzers (${{ matrix.sanitizer }})
         id: build
@@ -34,4 +37,5 @@ jobs:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           fuzz-seconds: 300
           mode: 'batch'
+          language: javascript
           sanitizer: ${{ matrix.sanitizer }}
