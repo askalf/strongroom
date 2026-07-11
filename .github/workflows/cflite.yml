@@ -19,10 +19,11 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # ClusterFuzzLite requires address|memory|undefined|coverage; for a pure
-        # JS (Jazzer.js) project the native sanitizer is a no-op, so `address`
-        # is the conventional choice.
-        sanitizer: [address]
+        # JavaScript (Jazzer.js) has no native sanitizer — OSS-Fuzz rejects
+        # address/memory/undefined for JS ("cannot be fuzzed with sanitizers"),
+        # and the action's config rejects `none`. `coverage` is the value real
+        # JS ClusterFuzzLite projects use with this action version.
+        sanitizer: [coverage]
     steps:
       - name: Build fuzzers (${{ matrix.sanitizer }})
         id: build
