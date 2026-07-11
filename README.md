@@ -13,9 +13,9 @@ Agents need credentials — API keys, tokens, passwords — to do anything usefu
 - **vault** — secrets encrypted at rest (AES-256-GCM, key in `~/.keeper`, `0600`). Never a plaintext env var, never in a prompt.
 - **lease** — `grant` mints an opaque handle bound to a **TTL**, a **use count**, and (optionally) a **destination host**. The agent's context holds the lease, not the secret.
 - **redeem** — exchange a lease for the secret at the point of use, *iff* it's still valid (not expired, uses remaining, host in scope). A denial is audited and never burns a use.
-- **audit** — every grant / redeem / deny / revoke is **hash-chained** (shared with [warden](https://github.com/askalf/warden)) — editing or deleting a past access breaks `strongroom audit --verify`.
+- **audit** — every grant / redeem / deny / revoke is **hash-chained** (shared with [redstamp](https://github.com/askalf/redstamp)) — editing or deleting a past access breaks `strongroom audit --verify`.
 
-Completes the agent-security stack: **warden** contains the call · **canon** vets the tool · **strongroom** holds the keys.
+Completes the agent-security stack: **redstamp** contains the call · **truecopy** vets the tool · **strongroom** holds the keys.
 
 ## Quick start
 
@@ -141,7 +141,7 @@ strongroom is a vault, so its own security is the point:
 - **Leases are bearer tokens** — only `sha256(id)` is stored; the raw id is returned once, to you. Reading `leases.json` therefore can't redeem anything.
 - **Single-use is atomic** — redeem is a check-and-consume under a cross-process lock, so concurrent redeems can't double-spend a one-use lease.
 - **Fail-closed** — a tampered, swapped, or wrong-key entry returns null and denies; it never throws or leaks garbage.
-- **Tamper-evident audit** — every access is hash-chained (shared with warden) and logged by lease *fingerprint*, never the raw id. An **authenticated tip** (HMAC under a subkey of the master key) commits to the chain's length and last hash, so *truncating* or *splicing* the log is caught — not just editing an entry.
+- **Tamper-evident audit** — every access is hash-chained (shared with redstamp) and logged by lease *fingerprint*, never the raw id. An **authenticated tip** (HMAC under a subkey of the master key) commits to the chain's length and last hash, so *truncating* or *splicing* the log is caught — not just editing an entry.
 - **Reflected secrets can't ride back in** — the broker redacts any occurrence of the injected secret from relayed response headers and bodies and audits it (`sanitize`), so an echoing or misconfigured upstream can't hand the raw key back into the agent's context.
 
 What it is **not**: a defense against an attacker who already has your passphrase / master key or full process memory — at that point they have the vault. strongroom shrinks the *agent's* exposure (a lease, not the key; short-lived; scoped; audited); it doesn't replace OS-level isolation.
@@ -179,7 +179,7 @@ const { ok, value } = redeem(lease.id, { host: 'api.stripe.com' });
 
 ## The agent-security stack
 
-Three composable layers, one defense: **[warden](https://github.com/askalf/warden)** contains the call · **[canon](https://github.com/askalf/canon)** vets the tool · **[strongroom](https://github.com/askalf/strongroom)** holds the keys *(you are here)*. Run all three together → **[agent-security-stack](https://github.com/askalf/agent-security-stack)**.
+Three composable layers, one defense: **[redstamp](https://github.com/askalf/redstamp)** contains the call · **[truecopy](https://github.com/askalf/truecopy)** vets the tool · **[strongroom](https://github.com/askalf/strongroom)** holds the keys *(you are here)*. Run all three together → **[agent-security-stack](https://github.com/askalf/agent-security-stack)**.
 
 ---
 Part of **[Own Your Stack](https://github.com/askalf)** — own your AI infrastructure instead of renting it. Built by Thomas Sprayberry.
