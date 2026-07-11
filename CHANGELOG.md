@@ -10,6 +10,8 @@ adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-07-11
+
 ### Added
 - **Operator-set grant ceiling** — `KEEPER_MAX_TTL` (seconds) and
   `KEEPER_MAX_USES` cap every lease minted from the vault, enforced in the
@@ -128,4 +130,5 @@ First public release — own your agent secrets: hand agents leases, not keys.
   (shared with `@askalf/warden`); editing a past entry breaks `keeper audit
   --verify`. Leases are logged by fingerprint, never raw.
 
+[0.2.0]: https://github.com/askalf/strongroom/releases/tag/v0.2.0
 [0.1.0]: https://github.com/askalf/keeper/releases/tag/v0.1.0
