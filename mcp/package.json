@@ -1,0 +1,49 @@
+{
+  "name": "@askalf/strongroom-mcp",
+  "version": "0.1.0",
+  "description": "An MCP server that is the strongroom control plane: its tools mint scoped, expiring, revocable leases and hand agents a lease-backed base URL — so API keys never enter agent context. Part of Own Your Stack.",
+  "type": "module",
+  "bin": {
+    "strongroom-mcp": "./server.mjs"
+  },
+  "exports": {
+    ".": "./server.mjs"
+  },
+  "scripts": {
+    "test": "node --test",
+    "start": "node server.mjs"
+  },
+  "dependencies": {
+    "@askalf/strongroom": "^0.2.1",
+    "@modelcontextprotocol/sdk": "1.29.0",
+    "zod": "4.4.3"
+  },
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "ai-agents",
+    "agent-security",
+    "secrets",
+    "credentials",
+    "leases",
+    "least-privilege",
+    "own-your-stack"
+  ],
+  "author": "Thomas Sprayberry",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "github:askalf/strongroom",
+    "directory": "mcp"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "files": [
+    "server.mjs",
+    "README.md"
+  ],
+  "publishConfig": {
+    "access": "public"
+  }
+}
