@@ -14,7 +14,7 @@
     "./broker": "./src/broker.mjs"
   },
   "scripts": {
-    "test": "node --test test/",
+    "test": "node --test",
     "fuzz": "node fuzz/run.mjs",
     "demo": "node demo/demo.mjs",
     "demo:platform": "node demo/platform.mjs"
