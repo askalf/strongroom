@@ -2,7 +2,7 @@
 // keeper CLI — store secrets, grant scoped short-lived leases, redeem at egress.
 import fs from 'node:fs';
 import { spawnSync } from 'node:child_process';
-import { addSecret, removeSecret, grant, redeem, revoke, rekeyMasterKey, vault, lease, audit } from './index.mjs';
+import { addSecret, removeSecret, grant, grantFromLease, redeem, revoke, rekeyMasterKey, vault, lease, audit } from './index.mjs';
 import { startBroker } from './broker.mjs';
 import { startDaemon } from './daemon.mjs';
 import { redeemViaDaemon } from './client.mjs';
@@ -19,6 +19,10 @@ const opt = (name, def) => {
   const eq = pre.find((x) => x.startsWith(name + '='));
   return eq ? eq.slice(name.length + 1) : def;
 };
+// Was a flag supplied at all (as `--name`, `--name value`, or `--name=…`)? Lets
+// `grant --from-lease` tell "caller OMITTED --ttl" (→ inherit the parent's) from
+// "caller PASSED --ttl" (→ attenuate to it): undefined vs a value downstream.
+const has = (name) => pre.includes(name) || pre.some((x) => x.startsWith(name + '='));
 const pos = pre.slice(1).filter((a) => !a.startsWith('--'));
 // Machine contract (grant/leases/ls/audit): stdout carries exactly ONE JSON
 // value — no ANSI, no prose, no stderr summary — so a control plane scripting
@@ -47,6 +51,12 @@ function usage() {
        --rate <req/min>  --paths <glob,glob>  --concurrency <n>
                                        (broker: cap rate + simultaneous requests, scope endpoints)
        --json                          machine-readable: ONE JSON object on stdout, nothing else
+  keeper grant --from-lease <lease> [tighter opts]
+                                       DELEGATE: attenuate a lease you hold into a narrower
+                                       sub-lease for a sub-agent — shorter --ttl, fewer --uses,
+                                       tighter --host/--upstream/--paths/--rate/--concurrency.
+                                       NEVER wider; unset scopes inherit the parent's. The child
+                                       records the parent's fingerprint in its grant audit event.
   keeper redeem <lease> [--host <h>]   exchange a valid lease for the secret (egress side)
   keeper exec <lease> --as <ENV> [--host <h>] -- <cmd...>
                                        redeem + run <cmd> with the secret in its env only
@@ -94,6 +104,36 @@ const T = {
   },
   rm() { if (!pos[0]) return (usage(), 2); out(removeSecret(pos[0]) ? `${c(C.grn, '✓')} removed ${pos[0]}` : c(C.dim, `no such secret: ${pos[0]}`)); return 0; },
   grant() {
+    // Delegation mode: `keeper grant --from-lease <parentLease> [tighter opts]`
+    // attenuates a lease the caller HOLDS into a narrower sub-lease for a
+    // sub-agent — no <name> positional, the secret is inherited from the parent.
+    // Every unset scope inherits the parent's; any set one must be <= it, else
+    // the mint is rejected (and audited). ttl/uses left unset default to the
+    // parent's REMAINING ttl / uses (a straight, no-wider copy).
+    const fromLease = opt('--from-lease', null);
+    if (fromLease && fromLease !== true) {
+      try {
+        const l = grantFromLease(fromLease, {
+          ttlS: has('--ttl') ? Number(opt('--ttl', undefined)) : undefined,
+          uses: has('--uses') ? Number(opt('--uses', undefined)) : undefined,
+          host: opt('--host', null) || null, upstream: opt('--upstream', null) || null, inject: opt('--inject', null) || null,
+          rate: has('--rate') ? Number(opt('--rate', 0)) : undefined, concurrency: has('--concurrency') ? Number(opt('--concurrency', 0)) : undefined,
+          paths: has('--paths') ? String(opt('--paths', '') || '').split(',').map((s) => s.trim()).filter(Boolean) : undefined,
+        });
+        if (asJson) {
+          out(JSON.stringify({
+            id: l.id, secret: l.secret, usesLeft: l.usesLeft, expiresAt: l.expiresAt,
+            ttlS: Math.round((l.expiresAt - l.createdAt) / 1000),
+            host: l.host, upstream: l.upstream, inject: l.inject, rate: l.rate, paths: l.paths, concurrency: l.concurrency,
+            parent: l.parent,
+          }));
+          return 0;
+        }
+        out(c(C.bold, l.id));
+        err(c(C.dim, `  ↳ ${l.secret} · from ${l.parent} · ${l.usesLeft} use(s) · ttl ${Math.round((l.expiresAt - Date.now()) / 1000)}s${l.host ? ' · host ' + l.host : ''}${l.upstream ? ' · → ' + l.upstream : ''}${l.rate ? ' · ' + l.rate + '/min' : ''}${l.concurrency ? ' · ≤' + l.concurrency + ' in-flight' : ''}${l.paths ? ' · paths ' + l.paths.join(',') : ''}`));
+        return 0;
+      } catch (e) { err(`${c(C.red, '✗')} ${e.message}`); return 1; }
+    }
     if (!pos[0]) return (usage(), 2);
     try {
       const l = grant(pos[0], {
@@ -168,7 +208,7 @@ const T = {
     const ls = lease.listLeases();
     if (asJson) return (out(JSON.stringify(ls)), 0); // already secret-safe: fingerprint, never the raw id
     if (!ls.length) return (out(c(C.dim, 'no outstanding leases')), 0);
-    ls.forEach((l) => out(`${l.expired ? c(C.dim, '○') : c(C.grn, '●')} ${c(C.bold, l.fingerprint)} ${c(C.dim, `→ ${l.secret} · ${l.usesLeft} use(s)${l.expired ? ' · EXPIRED' : ''}${l.host ? ' · ' + l.host : ''}`)}`));
+    ls.forEach((l) => out(`${l.expired ? c(C.dim, '○') : c(C.grn, '●')} ${c(C.bold, l.fingerprint)} ${c(C.dim, `→ ${l.secret} · ${l.usesLeft} use(s)${l.expired ? ' · EXPIRED' : ''}${l.host ? ' · ' + l.host : ''}${l.parent ? ' · ⤷ from ' + l.parent : ''}`)}`));
     return 0;
   },
   revoke() { if (!pos[0]) return (usage(), 2); out(revoke(pos[0]) ? `${c(C.grn, '✓')} revoked ${pos[0]}` : c(C.dim, `no such lease: ${pos[0]}`)); return 0; },
@@ -180,7 +220,7 @@ const T = {
       return (out(JSON.stringify(audit.read())), 0);
     }
     const events = audit.read();
-    for (const e of events) out(`${c(C.dim, e.ts)}  ${eventColor(e.event)} ${e.secret || e.lease || ''}${e.reason ? c(C.red, ' (' + e.reason + ')') : ''}${e.host ? c(C.dim, ' · ' + e.host) : ''}`);
+    for (const e of events) out(`${c(C.dim, e.ts)}  ${eventColor(e.event)} ${e.secret || e.lease || ''}${e.from ? c(C.dim, ' ⤷ from ' + e.from) : ''}${e.reason ? c(C.red, ' (' + e.reason + ')') : ''}${e.host ? c(C.dim, ' · ' + e.host) : ''}`);
     if (opt('--verify', false)) {
       const v = audit.verify();
       const where = v.reason ? `(${v.reason})` : v.at != null ? `at entry ${v.at}` : '';
