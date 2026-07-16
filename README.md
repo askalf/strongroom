@@ -128,6 +128,24 @@ strongroom audit --verify --json  # → {"ok":true,"entries":n} | {"ok":false,"r
 
 See it end to end: `npm run demo:platform`.
 
+## Delegating a lease — least privilege between agents
+
+In a multi-agent tree, a parent agent can hand a **sub-agent** a *narrower* slice of its own access without ever touching the vault. `grant --from-lease` **attenuates** a lease the parent holds into a sub-lease whose every scope is `≤` the parent's — shorter TTL, fewer uses, tighter host/upstream/paths/rate/concurrency. **Never wider.**
+
+```bash
+# Parent holds a broad lease: 1h, 100 uses, all of /v1/*
+PARENT=$(strongroom grant OPENAI_API_KEY --upstream https://api.openai.com \
+  --paths "/v1/*" --ttl 3600 --uses 100)
+
+# Delegate a tight sub-lease to a summarizer sub-agent: 5 min, 3 uses, chat only
+CHILD=$(strongroom grant --from-lease "$PARENT" \
+  --paths "/v1/chat/completions" --ttl 300 --uses 3)
+```
+
+- **Attenuate-only.** A sub-lease may **narrow** any axis or **inherit** it (unset = inherit the parent's), but never widen: a longer TTL, more uses, a broader `--paths` glob, a different `--host`/`--upstream`, or a higher `--rate`/`--concurrency` is **rejected** with an error naming the axis. `--paths` must be a **subset** of the parent's (checked with the same segment-glob semantics the broker enforces). A parent axis left *unlimited* may be *capped* by the child.
+- **Recorded provenance.** The child lease carries the **parent lease fingerprint**, and the child's `grant` audit event carries it as `from` — so a delegation shows up in the hash-chained, authenticated-tip audit as a parent→child link that still verifies. `strongroom leases` and `strongroom audit` render it as `⤷ from <fp>`.
+- **Per-capability guarantee.** The child is an independent lease bounded by `child scope ⊆ parent scope`, so a sub-agent can never redeem toward anything its parent couldn't — and delegating does **not** spend a parent use.
+
 ## Security model
 
 strongroom is a vault, so its own security is the point:
@@ -158,6 +176,9 @@ strongroom grant <name> [--ttl --uses --host]                        mint a leas
               [--upstream --inject --paths --rate --concurrency]  (broker scoping)
               (KEEPER_MAX_TTL / KEEPER_MAX_USES, if set, cap every grant — over-cap is rejected + audited)
               [--json]                 one machine-readable JSON object on stdout
+strongroom grant --from-lease <lease> [tighter opts]  DELEGATE: attenuate a lease you hold into a
+              narrower sub-lease for a sub-agent (shorter --ttl, fewer --uses, tighter
+              --host/--upstream/--paths/--rate/--concurrency; NEVER wider; unset scopes inherit)
 strongroom redeem <lease> [--host]     exchange a valid lease for the secret (egress side)
 strongroom exec <lease> --as <ENV> -- <cmd...>  redeem + run <cmd> with the secret in its env only
 strongroom broker [--port 8771]        egress-injection proxy (base-URL swap, zero key in the agent)
@@ -178,6 +199,10 @@ addSecret('STRIPE_KEY', process.env.STRIPE_KEY);
 const lease = grant('STRIPE_KEY', { ttlS: 60, uses: 1, host: 'api.stripe.com' });
 // hand `lease.id` to the agent; at egress:
 const { ok, value } = redeem(lease.id, { host: 'api.stripe.com' });
+
+// Delegate a narrower sub-lease to a sub-agent (attenuate-only; child ⊆ parent):
+import { grantFromLease } from '@askalf/strongroom';
+const sub = grantFromLease(lease.id, { ttlS: 30, uses: 1 }); // sub.parent = parent fingerprint
 ```
 
 ## The agent-security stack

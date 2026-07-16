@@ -10,6 +10,30 @@ adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-07-16
+
+### Added
+
+- **Lease delegation (attenuation).** A parent agent turns its OWN lease into a
+  narrower sub-lease for a sub-agent with `strongroom grant --from-lease <lease>
+  [tighter opts]` (library: `grantFromLease(parentId, opts)`). Every scope can
+  only be **narrowed, never widened**: a shorter `--ttl` (a sub-lease may not
+  outlive its parent), fewer `--uses` (≤ the parent's remaining), a tighter
+  `--host`/`--upstream` (inherit-or-tighten, never redirect), a smaller
+  `--rate`/`--concurrency` cap (or add one where the parent had none), and a
+  `--paths` allowlist that must be a **subset** of the parent's (glob-subset
+  checked with the same segment semantics the broker enforces). Any widening
+  attempt is **rejected** naming the offending axis, and audited as a
+  `deny`/`policy` event. Unset scopes **inherit** the parent's.
+- **Delegation audit trail.** The child lease records the **parent lease
+  fingerprint**, and the child's `grant` audit event carries it as `from` — so
+  the delegation composes with the existing hash-chained, authenticated-tip
+  audit into a full parent→child trail that still verifies. `strongroom leases`
+  and `strongroom audit` surface the `⤷ from <fp>` provenance.
+- Least privilege between agents in a multi-agent tree: a sub-agent can never
+  redeem toward anything its parent couldn't. Delegating does **not** consume a
+  parent use — the guarantee is per-capability (child scope ⊆ parent scope).
+
 ## [0.2.1] - 2026-07-11
 
 ### Added

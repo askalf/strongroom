@@ -41,6 +41,26 @@ export function grant(name, opts = {}) {
   return l;
 }
 
+/** Delegate: attenuate a lease the caller HOLDS into a narrower sub-lease for a
+ *  sub-agent (shorter TTL, fewer uses, tighter host/upstream/paths/rate — NEVER
+ *  wider). Least privilege between agents in a multi-agent tree: the child can
+ *  never redeem toward anything the parent couldn't. The child grant is audited
+ *  with `from` = the PARENT's fingerprint, so the delegation composes with the
+ *  hash-chained audit into a full parent→child trail. A rejected (widening or
+ *  invalid) delegation is audited as a policy deny. No parent use is consumed —
+ *  the guarantee is per-capability (child scope ⊆ parent scope). */
+export function grantFromLease(parentId, opts = {}) {
+  opts = opts || {};
+  let l;
+  try { l = lease.attenuateLease(parentId, opts); }
+  catch (e) {
+    audit.record({ event: 'deny', lease: fp(parentId), reason: 'policy', detail: e.message });
+    throw e;
+  }
+  audit.record({ event: 'grant', secret: l.secret, lease: fp(l.id), from: l.parent, host: l.host, upstream: l.upstream, rate: l.rate, paths: l.paths, concurrency: l.concurrency, ttlS: Math.round((l.expiresAt - l.createdAt) / 1000), uses: l.usesLeft });
+  return l;
+}
+
 /** Redeem a lease at the egress point → the secret, IF the lease is still valid.
  *  The check-and-consume is atomic (one winner per use); a denial or a broken
  *  decrypt is audited and the call fails CLOSED (never throws, never leaks). */
