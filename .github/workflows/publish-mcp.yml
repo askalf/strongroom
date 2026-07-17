@@ -50,7 +50,7 @@ jobs:
             echo "skip=false" >> "$GITHUB_OUTPUT"
           fi
 
-      - run: npm install --no-audit --no-fund
+      - run: npm ci
         if: steps.gate.outputs.skip != 'true'
       - run: npm test
         if: steps.gate.outputs.skip != 'true'
