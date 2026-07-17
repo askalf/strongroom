@@ -1,19 +1,19 @@
 # Security Policy
 
-keeper is a secrets broker for autonomous agents — leases instead of raw keys. Vulnerability reports get priority attention.
+strongroom is a secrets broker for autonomous agents — leases instead of raw keys. Vulnerability reports get priority attention.
 
 ## Reporting a vulnerability
 
 Please **do not open a public issue** for security reports.
 
-- **Preferred:** [GitHub private vulnerability reporting](https://github.com/askalf/keeper/security/advisories/new) — creates a private advisory visible only to maintainers.
-- **Email:** support@askalf.org with `keeper security` in the subject.
+- **Preferred:** [GitHub private vulnerability reporting](https://github.com/askalf/strongroom/security/advisories/new) — creates a private advisory visible only to maintainers.
+- **Email:** support@askalf.org with `strongroom security` in the subject.
 
 You'll get an acknowledgement within 72 hours. Please include a minimal reproduction where possible.
 
 ## Supported versions
 
-keeper is pre-1.0: only the latest release receives security fixes; there are no maintenance branches.
+strongroom is pre-1.0: only the latest release receives security fixes; there are no maintenance branches.
 
 ## In scope
 
