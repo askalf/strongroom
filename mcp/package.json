@@ -4,13 +4,13 @@
   "description": "An MCP server that is the strongroom control plane: its tools mint scoped, expiring, revocable leases and hand agents a lease-backed base URL — so API keys never enter agent context. Part of Own Your Stack.",
   "type": "module",
   "bin": {
-    "strongroom-mcp": "./server.mjs"
+    "strongroom-mcp": "server.mjs"
   },
   "exports": {
     ".": "./server.mjs"
   },
   "scripts": {
-    "test": "node --test smoke.mjs",
+    "test": "node --test smoke.mjs e2e.mjs",
     "start": "node server.mjs"
   },
   "dependencies": {
@@ -33,7 +33,7 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "github:askalf/strongroom",
+    "url": "git+https://github.com/askalf/strongroom.git",
     "directory": "mcp"
   },
   "engines": {
