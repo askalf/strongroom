@@ -10,7 +10,7 @@
     ".": "./server.mjs"
   },
   "scripts": {
-    "test": "node --test smoke.mjs e2e.test.mjs",
+    "test": "node --test smoke.mjs e2e.mjs",
     "start": "node server.mjs"
   },
   "dependencies": {
