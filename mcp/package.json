@@ -1,6 +1,6 @@
 {
   "name": "@askalf/strongroom-mcp",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "An MCP server that is the strongroom control plane: its tools mint scoped, expiring, revocable leases and hand agents a lease-backed base URL — so API keys never enter agent context. Part of Own Your Stack.",
   "type": "module",
   "bin": {
@@ -14,7 +14,7 @@
     "start": "node server.mjs"
   },
   "dependencies": {
-    "@askalf/strongroom": "^0.3.0",
+    "@askalf/strongroom": "^0.4.0",
     "@modelcontextprotocol/sdk": "1.29.0",
     "zod": "4.4.3"
   },
