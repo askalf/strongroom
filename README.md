@@ -84,6 +84,15 @@ KEEPER_DAEMON=1 strongroom redeem "$LEASE"  # this side holds NO key, NO passphr
 
 With `KEEPER_DAEMON=1`, `strongroom redeem` / `strongroom exec` route lease→secret over a **local socket** (unix domain socket / Windows named pipe — token-gated, owner-only `0600`, never TCP) instead of opening the vault. Same-user callers need zero config — both sides share the default socket path, and the client reads the capability token from the daemon's `0600` info file; a **sandboxed worker** is instead handed only `KEEPER_SOCKET` + `KEEPER_DAEMON_TOKEN` (pin one via env before `serve`) and never reads strongroom's home at all. Either way the redeeming process never holds the master key: compromise it and you get its leases — scoped, expiring, revocable — not the vault. This is how a control plane hands git credentials to sandboxed workers: a `GIT_ASKPASS` helper that runs `strongroom redeem`, with zero token bytes on disk and zero key material in the worker.
 
+## MCP server — leases, not keys, over MCP
+
+```bash
+npm install -g @askalf/strongroom-mcp
+strongroom-mcp   # owns the vault + broker in-process; talk to it over stdio
+```
+
+`@askalf/strongroom-mcp` is the strongroom control plane as an MCP server. There is deliberately **no `add_secret` tool** — the operator loads secrets into the vault out-of-band with the CLI (`strongroom add NAME`), so no secret value ever crosses the MCP wire in either direction. `grant_lease` is the only credential-granting tool, and it returns a lease-backed base URL, never a key — safe to persist in agent history, logs, and traces. Point your MCP client at the `strongroom-mcp` binary; see [`mcp/README.md`](mcp/README.md) for the full tool list and client config, or [`examples/mcp-strongroom`](examples/mcp-strongroom) for a worked example.
+
 ## Examples — real SDKs, zero keys in the agent
 
 Three end-to-end examples, each running a genuine client with a credential that never enters the agent's context:
