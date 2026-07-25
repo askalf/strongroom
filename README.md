@@ -1,5 +1,7 @@
 # strongroom
 
+[![npm](https://img.shields.io/npm/v/@askalf/strongroom?color=blue&label=npm)](https://www.npmjs.com/package/@askalf/strongroom)
+[![zero dependencies](https://img.shields.io/badge/dependencies-0-blue)](package.json)
 [![ci](https://github.com/askalf/strongroom/actions/workflows/ci.yml/badge.svg)](https://github.com/askalf/strongroom/actions/workflows/ci.yml)
 [![CodeQL](https://github.com/askalf/strongroom/actions/workflows/codeql.yml/badge.svg)](https://github.com/askalf/strongroom/actions/workflows/codeql.yml)
 [![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/askalf/strongroom/badge)](https://scorecard.dev/viewer/?uri=github.com/askalf/strongroom)
@@ -22,7 +24,7 @@ Completes the agent-security stack: **redstamp** contains the call · **truecopy
 
 ## Quick start
 
-> Install: `npm i -g @askalf/strongroom` (or run any command below with `npx -y @askalf/strongroom`). Also installable straight from GitHub: `npm i -g github:askalf/strongroom`.
+> Install: `npm i -g @askalf/strongroom` (or run any command below with `npx -y @askalf/strongroom`). **Zero runtime dependencies** — one package, no transitive tree, no `git` or GitHub reachability at install time, so it installs where the secrets actually live: air-gapped hosts, registry mirrors, and minimal CI images. (`npm i -g github:askalf/strongroom` also works, but that path *does* need git.)
 
 ```bash
 echo "sk-live-…" | strongroom add OPENAI_API_KEY          # stored encrypted
