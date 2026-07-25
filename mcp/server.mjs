@@ -18,6 +18,7 @@
 // protocol/sdk + zod + @askalf/strongroom are REGULAR deps; ALL logging goes
 // to stderr — stdout is the MCP stdio transport and must carry only JSON-RPC.
 import crypto from 'node:crypto';
+import { createRequire } from 'node:module';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { z } from 'zod';
@@ -44,7 +45,14 @@ broker.on('error', (e) => log('broker error:', e.message));
 const brokerBase = () => `http://${BROKER_HOST}:${brokerPort ?? BROKER_PORT}`;
 const leaseBaseUrl = (id) => `${brokerBase()}/${id}`;
 
-const server = new McpServer({ name: 'strongroom-mcp', version: '0.1.0' });
+// Version comes from package.json, never a second hand-maintained literal. This
+// string is what `initialize` returns as serverInfo.version — it is the version
+// a host DISPLAYS, so a stale copy misreports the running server to every client
+// and to directory listings. It had already drifted (literal 0.1.0 vs published
+// 0.1.3), which is what a duplicated constant always eventually does.
+const VERSION = createRequire(import.meta.url)('./package.json').version;
+
+const server = new McpServer({ name: 'strongroom-mcp', version: VERSION });
 
 // grant_lease — mint a scoped, expiring, revocable lease and return a
 // lease-backed base URL. The RESPONSE is safe to land in agent context: it
