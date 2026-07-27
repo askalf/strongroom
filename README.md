@@ -1,12 +1,16 @@
 # strongroom
 
 [![npm](https://img.shields.io/npm/v/@askalf/strongroom?color=blue&label=npm)](https://www.npmjs.com/package/@askalf/strongroom)
+[![downloads](https://img.shields.io/npm/dm/@askalf/strongroom?color=blue&label=downloads)](https://www.npmjs.com/package/@askalf/strongroom)
 [![zero dependencies](https://img.shields.io/badge/dependencies-0-blue)](package.json)
 [![ci](https://github.com/askalf/strongroom/actions/workflows/ci.yml/badge.svg)](https://github.com/askalf/strongroom/actions/workflows/ci.yml)
 [![CodeQL](https://github.com/askalf/strongroom/actions/workflows/codeql.yml/badge.svg)](https://github.com/askalf/strongroom/actions/workflows/codeql.yml)
 [![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/askalf/strongroom/badge)](https://scorecard.dev/viewer/?uri=github.com/askalf/strongroom)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![strongroom on Glama](https://glama.ai/mcp/servers/askalf/strongroom/badges/card.svg)](https://glama.ai/mcp/servers/askalf/strongroom)
+<!-- OpenSSF Best Practices — uncomment once enrolled at https://www.bestpractices.dev and replace PROJECT_ID:
+[![OpenSSF Best Practices](https://www.bestpractices.dev/projects/PROJECT_ID/badge)](https://www.bestpractices.dev/projects/PROJECT_ID)
+-->
 
 > _strongroom — **own your agent secrets**. An encrypted vault that hands agents scoped, short-lived, single-use leases instead of raw keys. Part of **[Own Your Stack](https://github.com/askalf)** — own your AI infrastructure instead of renting it by the token._
 
@@ -220,6 +224,8 @@ const sub = grantFromLease(lease.id, { ttlS: 30, uses: 1 }); // sub.parent = par
 ## The agent-security stack
 
 Three composable layers, one defense: **[redstamp](https://github.com/askalf/redstamp)** contains the call · **[truecopy](https://github.com/askalf/truecopy)** vets the tool · **[strongroom](https://github.com/askalf/strongroom)** holds the keys *(you are here)*. Run all three together → **[agent-security-stack](https://github.com/askalf/agent-security-stack)**.
+
+Related: **[plumbline](https://github.com/askalf/plumbline)** — *own your agent trajectory.* Out-of-band, read-only monitoring of the whole action sequence against the declared job, catching escapes assembled from individually-authorized steps. It sits **above** the three in-path layers as a monitor — it never blocks an action.
 
 ---
 Part of **[Own Your Stack](https://github.com/askalf)** — own your AI infrastructure instead of renting it. Built by Thomas Sprayberry.
