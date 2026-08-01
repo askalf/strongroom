@@ -1,0 +1,25 @@
+{
+  "version": 1,
+  "skills": {
+    "tools.json": {
+      "source": "mcp/tools.json",
+      "kind": "mcp",
+      "hash": "05ae79435e7d290611663fee2923602063eb9be0624bff8a2109566a38149961",
+      "scannedAt": "2026-08-01T17:29:44.771Z",
+      "verdict": "clean",
+      "findings": 0,
+      "detection": {
+        "engine": "redstamp",
+        "version": "0.7.3"
+      },
+      "parts": {
+        "broker_status": "270020714ff6014844a33ef27ca7746ea6dfcd162b5736157600a07f34ef0b72",
+        "grant_lease": "24c7984c25f97a1a73c100e92264cde79d74e5928895ad4591da4c2a033b26de",
+        "list_leases": "15a2c58b5457e5b4e89d6e917410e35c9188b0230fe890d9ea0bff0d735af262",
+        "list_secrets": "1e37cfb05a8f9463088d97e85b5b6890cc2404955d5e26a3dcb4be3f8386cb62",
+        "revoke_lease": "1e18f737dff405c9ac67024fe52231839b5fe36d7c5cc7589c5c79259d04f1cb",
+        "(manifest)": "6b863dbbf97b233a67e51c314b1f4091039e27f4026cf856b858e0c76de8eab4"
+      }
+    }
+  }
+}

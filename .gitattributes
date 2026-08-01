@@ -1,3 +1,7 @@
 # Shell scripts must stay LF — a CRLF shebang breaks in the OSS-Fuzz / cflite
 # Linux container (`#!/bin/bash\r` → bad interpreter).
 *.sh text eol=lf
+# truecopy hashes raw bytes: the pinned tool surface and its lock must be
+# byte-identical on every platform or all entries "drift" on Linux CI.
+mcp/tools.json text eol=lf
+truecopy.lock text eol=lf
