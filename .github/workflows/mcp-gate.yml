@@ -1,0 +1,43 @@
+# truecopy gate over @askalf/strongroom-mcp's own tool surface.
+#
+# The server vouches for a leases-not-keys control plane — so its OWN five
+# tool definitions (what an agent's tools/list actually sees) are pinned in
+# truecopy.lock and re-captured from the LIVE server on every change.
+# verify catches drift (a tool changed without a re-pin); scan catches
+# poisoning (an injection hidden in a name/description/schema). They catch
+# DIFFERENT failures — a re-pinned poisoned edit clears verify but not scan —
+# so scan runs even when verify fails.
+#
+# Re-pin after a legit tool change:
+#   node mcp/capture-tools.mjs && npx -y @askalf/truecopy add mcp/tools.json
+name: mcp-gate
+
+on:
+  push:
+    branches: [master]
+    paths: ['mcp/**', 'truecopy.lock', '.github/workflows/mcp-gate.yml']
+  pull_request:
+    branches: [master]
+    paths: ['mcp/**', 'truecopy.lock', '.github/workflows/mcp-gate.yml']
+
+permissions:
+  contents: read
+
+jobs:
+  gate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+      - name: Install MCP server deps
+        run: npm ci
+        working-directory: mcp
+      - name: Recapture live tools/list
+        run: node mcp/capture-tools.mjs
+      - name: Verify pinned tool surface (drift)
+        run: npx -y @askalf/truecopy@0.10.1 verify
+      - name: Poison-scan tool surface
+        if: always()
+        run: npx -y @askalf/truecopy@0.10.1 scan mcp/tools.json

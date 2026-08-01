@@ -1,0 +1,113 @@
+{
+  "server": "@askalf/strongroom-mcp",
+  "tools": [
+    {
+      "name": "broker_status",
+      "description": "Report the strongroom egress broker base URL and whether it is listening. Lease-backed URLs are broker_base + \"/\" + <lease>.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {},
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      }
+    },
+    {
+      "name": "grant_lease",
+      "description": "Mint a scoped, expiring, revocable lease for a stored secret and return a lease-backed base URL. Point your HTTP client at base_url and call the upstream with NO key — the broker injects the real secret at the network boundary. The raw API key is never returned and never crosses the MCP wire.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "secret": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Name of a secret already in the vault (see list_secrets). The value is never exposed."
+          },
+          "upstream": {
+            "type": "string",
+            "format": "uri",
+            "description": "Upstream base URL the secret may be injected toward, e.g. https://api.example.com. The lease is bound to this host."
+          },
+          "ttl_s": {
+            "description": "Lease lifetime in seconds (default 300). Capped by STRONGROOM_MAX_TTL if set.",
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 86400
+          },
+          "uses": {
+            "description": "Number of times the lease may be redeemed (default 1). Capped by STRONGROOM_MAX_USES if set.",
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 10000
+          },
+          "inject": {
+            "description": "How to inject the secret upstream: 'bearer' (Authorization: Bearer) or 'x-api-key' (default bearer).",
+            "type": "string",
+            "enum": [
+              "bearer",
+              "x-api-key"
+            ]
+          },
+          "paths": {
+            "description": "Glob path allowlist scoping which endpoints the lease may hit, e.g. ['/v1/chat/*']. Empty = any path on the upstream host.",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "rate": {
+            "description": "Requests-per-minute cap for this lease (default unlimited).",
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 100000
+          },
+          "concurrency": {
+            "description": "Max simultaneous in-flight requests for this lease (default unlimited).",
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 10000
+          }
+        },
+        "required": [
+          "secret",
+          "upstream"
+        ],
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      }
+    },
+    {
+      "name": "list_leases",
+      "description": "List outstanding leases by fingerprint, with their secret name, uses remaining, and expiry. Raw lease ids are never stored or returned.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {},
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      }
+    },
+    {
+      "name": "list_secrets",
+      "description": "List the names of secrets in the vault. Values are never returned — only names you can grant a lease against.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {},
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      }
+    },
+    {
+      "name": "revoke_lease",
+      "description": "Revoke a lease immediately by its raw lease id or its lease-backed base URL. The capability dies at once; the real secret is untouched.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "lease": {
+            "type": "string",
+            "minLength": 1,
+            "description": "The raw lease id, or the lease-backed base_url returned by grant_lease."
+          }
+        },
+        "required": [
+          "lease"
+        ],
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      }
+    }
+  ]
+}
