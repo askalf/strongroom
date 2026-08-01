@@ -7,7 +7,9 @@
 [![CodeQL](https://github.com/askalf/strongroom/actions/workflows/codeql.yml/badge.svg)](https://github.com/askalf/strongroom/actions/workflows/codeql.yml)
 [![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/askalf/strongroom/badge)](https://scorecard.dev/viewer/?uri=github.com/askalf/strongroom)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+<!-- strongroom on Glama — uncomment once the server is indexed in the directory (submit at https://glama.ai/mcp/servers; glama.json is already in place):
 [![strongroom on Glama](https://glama.ai/mcp/servers/askalf/strongroom/badges/card.svg)](https://glama.ai/mcp/servers/askalf/strongroom)
+-->
 <!-- OpenSSF Best Practices — uncomment once enrolled at https://www.bestpractices.dev and replace PROJECT_ID:
 [![OpenSSF Best Practices](https://www.bestpractices.dev/projects/PROJECT_ID/badge)](https://www.bestpractices.dev/projects/PROJECT_ID)
 -->
