@@ -10,6 +10,21 @@
 #
 # Re-pin after a legit tool change:
 #   node mcp/capture-tools.mjs && npx -y @askalf/truecopy add mcp/tools.json
+#
+# THE TRUECOPY PIN IS SECURITY-RELEVANT AND MUST NOT GO STALE.
+# truecopy bundles redstamp as its scanning engine, so an old pin means an old
+# DETECTOR — and a stale detector fails SILENTLY: it returns "clean" for the
+# shapes it cannot yet see. Not hypothetical. This gate sat on truecopy@0.10.1
+# (redstamp 0.7.3) after 0.10.3 shipped the fix for redstamp#124 — a proven
+# live bypass where PowerShell's `-ArgumentList` array form rated green while
+# the semantically identical space-separated spelling rated black. While that
+# pin stood, this gate would have passed a tool surface using that evasion.
+#
+# So: ONE pin, declared once in `env` below — it was previously spelled twice,
+# which is how half a bump goes missing — plus a non-blocking freshness check
+# that annotates the run when a newer truecopy exists. It stays PINNED (a
+# floating `npx -y @askalf/truecopy` would let a compromised publish execute in
+# CI unreviewed), but going stale is now loud instead of silent.
 name: mcp-gate
 
 on:
@@ -26,6 +41,9 @@ permissions:
 jobs:
   gate:
     runs-on: ubuntu-latest
+    env:
+      # The single source of truth for the detector version. Bump here only.
+      TRUECOPY_VERSION: '0.10.3'
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
@@ -37,7 +55,39 @@ jobs:
       - name: Recapture live tools/list
         run: node mcp/capture-tools.mjs
       - name: Verify pinned tool surface (drift)
-        run: npx -y @askalf/truecopy@0.10.1 verify
+        run: npx -y "@askalf/truecopy@$TRUECOPY_VERSION" verify
       - name: Poison-scan tool surface
         if: always()
-        run: npx -y @askalf/truecopy@0.10.1 scan mcp/tools.json
+        run: npx -y "@askalf/truecopy@$TRUECOPY_VERSION" scan mcp/tools.json
+
+      # Non-blocking on purpose. Failing here would gate merges on npm being
+      # reachable and on a release we may not have reviewed yet — a detector
+      # bump deserves a human look, not an automatic one. But it must not be
+      # possible for the pin to rot unnoticed again, so a newer version
+      # surfaces as a run annotation and in the job summary.
+      - name: Detector freshness (advisory)
+        if: always()
+        run: |
+          set -uo pipefail
+          latest="$(npm view @askalf/truecopy version 2>/dev/null || true)"
+          if [ -z "$latest" ]; then
+            echo "::notice::could not reach npm to check truecopy freshness — skipping"
+            exit 0
+          fi
+          if [ "$latest" = "$TRUECOPY_VERSION" ]; then
+            echo "detector current: truecopy@$TRUECOPY_VERSION"
+            echo "Detector current: \`truecopy@$TRUECOPY_VERSION\`" >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          echo "::warning title=Stale poison detector::mcp-gate pins truecopy@$TRUECOPY_VERSION but $latest is published. truecopy bundles redstamp as its scanner, so an old pin is an old detector and returns clean for shapes it cannot see. Review the truecopy CHANGELOG and bump TRUECOPY_VERSION in this workflow."
+          {
+            echo "### ⚠️ Stale poison detector"
+            echo
+            echo "| | version |"
+            echo "|---|---|"
+            echo "| pinned here | \`$TRUECOPY_VERSION\` |"
+            echo "| published | \`$latest\` |"
+            echo
+            echo "truecopy bundles redstamp as its scanning engine — an old pin is an old **detector**, and a stale detector returns \`clean\` for the shapes it cannot yet see."
+            echo "Check the [truecopy CHANGELOG](https://github.com/askalf/truecopy/blob/master/CHANGELOG.md); if the delta touches detection, bump \`TRUECOPY_VERSION\` in \`.github/workflows/mcp-gate.yml\`."
+          } >> "$GITHUB_STEP_SUMMARY"

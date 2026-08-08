@@ -6,6 +6,18 @@ adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Security
+
+- **The MCP poison gate was running a detector with a known bypass (CI only, no package change).** `mcp-gate.yml` pinned `@askalf/truecopy@0.10.1`, which bundles `@askalf/redstamp` 0.7.3 as its scanning engine. truecopy 0.10.3 shipped on 2026-08-05 specifically to pick up redstamp 0.7.5, which fixed redstamp#124 — a proven live bypass where PowerShell's `-ArgumentList` array form (`'-ExecutionPolicy','Bypass',…`) rated **green** while the semantically identical space-separated spelling rated black, because both obfuscation lookaheads assumed whitespace between a flag and its value. truecopy's own changelog states a `verify`/`scan` against 0.7.3 "could miss a skill or MCP server using that evasion shape". This gate is what vouches for `@askalf/strongroom-mcp`'s tool surface, so while that pin stood it could have passed a surface using that evasion.
+
+  Bumped to `0.10.3`. Verified against the live tool surface before and after: `verify` and `scan` both pass on the newer detector, so this is a detection upgrade with no behaviour change here.
+
+### Changed
+
+- **The detector version is declared once, and going stale is now loud.** The pin was spelled twice (`verify` and `scan`) — which is how half a bump goes missing — and is now a single `TRUECOPY_VERSION` job env. A new advisory step compares it against the published version and emits a run annotation plus a job-summary table when a newer one exists. Deliberately **non-blocking**: failing would gate merges on npm reachability and on a detector release nobody has reviewed, and a detector bump deserves a human look. The pin stays a pin — a floating `npx -y @askalf/truecopy` would let a compromised publish execute in CI unreviewed — but it can no longer rot unnoticed.
+
+  Found by an org-wide dogfooding audit: across twelve public repos this was the *only* pinned self-consumption of one of our own tools, and it was stale. `npm-drift.yml` watches strongroom's own **outbound** publish drift; nothing watched the versions we **consume**.
+
 ## [0.4.0] - 2026-07-24
 
 ### Changed
