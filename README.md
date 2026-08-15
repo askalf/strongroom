@@ -1,4 +1,10 @@
+<div align="center">
+
 # strongroom
+
+**Own your agent secrets. An encrypted vault that hands agents scoped, short-lived, single-use leases — never raw keys.**
+
+The key is revealed only at the egress point, only while the lease is valid.
 
 [![npm](https://img.shields.io/npm/v/@askalf/strongroom?color=blue&label=npm)](https://www.npmjs.com/package/@askalf/strongroom)
 [![downloads](https://img.shields.io/npm/dm/@askalf/strongroom?color=blue&label=downloads)](https://www.npmjs.com/package/@askalf/strongroom)
@@ -14,24 +20,11 @@
 [![OpenSSF Best Practices](https://www.bestpractices.dev/projects/PROJECT_ID/badge)](https://www.bestpractices.dev/projects/PROJECT_ID)
 -->
 
-> _strongroom — **own your agent secrets**. An encrypted vault that hands agents scoped, short-lived, single-use leases instead of raw keys. Part of **[Own Your Stack](https://github.com/askalf)** — own your AI infrastructure instead of renting it by the token._
+[Quick start](#quick-start) · [Egress broker](#egress-broker--the-agent-just-swaps-a-base-url) · [Redeem-daemon](#redeem-daemon--no-master-key-on-the-redeeming-side) · [Delegation](#delegating-a-lease--least-privilege-between-agents) · [Security model](#security-model) · [Commands](#commands)
 
-> _**Formerly `keeper`.** Renamed to `strongroom` for the npm release; the GitHub repo redirects and the legacy `keeper` CLI alias keeps working. `KEEPER_*` env vars and the `~/.keeper` home directory are unchanged for compatibility._
+</div>
 
-Agents need credentials — API keys, tokens, passwords — to do anything useful. Today they get them the worst possible way: a long-lived key stuffed into an environment variable or, worse, into the prompt. OpenClaw leaked the keys of ~135k exposed instances exactly this way. A key in the model's context is a key in every log, every trace, and every place a poisoned tool can read.
-
-**strongroom holds the keys so the agent doesn't.** The raw secret stays encrypted in the vault; the agent only ever holds a **lease** — a scoped, short-lived, use-limited handle — and the real key is revealed **only at the egress point**, only while the lease is valid:
-
-- **vault** — secrets encrypted at rest (AES-256-GCM, key in `~/.keeper`, `0600`). Never a plaintext env var, never in a prompt.
-- **lease** — `grant` mints an opaque handle bound to a **TTL**, a **use count**, and (optionally) a **destination host**. The agent's context holds the lease, not the secret.
-- **redeem** — exchange a lease for the secret at the point of use, *iff* it's still valid (not expired, uses remaining, host in scope). A denial is audited and never burns a use.
-- **audit** — every grant / redeem / deny / revoke is **hash-chained** (the same primitive [redstamp](https://github.com/askalf/redstamp) uses, vendored so strongroom installs with **zero dependencies**) — editing or deleting a past access breaks `strongroom audit --verify`.
-
-Completes the agent-security stack: **redstamp** contains the call · **truecopy** vets the tool · **strongroom** holds the keys.
-
-## Quick start
-
-> Install: `npm i -g @askalf/strongroom` (or run any command below with `npx -y @askalf/strongroom`). **Zero runtime dependencies** — one package, no transitive tree, no `git` or GitHub reachability at install time, so it installs where the secrets actually live: air-gapped hosts, registry mirrors, and minimal CI images. (`npm i -g github:askalf/strongroom` also works, but that path *does* need git.)
+---
 
 ```bash
 echo "sk-live-…" | strongroom add OPENAI_API_KEY          # stored encrypted
@@ -47,6 +40,48 @@ strongroom audit --verify                                 # tamper-evident acces
 ```
 
 The agent dispatched `strongroom exec <lease> …`; the key was decrypted inside strongroom and handed to the subprocess's environment — it never entered the agent's context, stdout, or logs. Run the whole story: `npm run demo`.
+
+## Why a lease, not the key
+
+Agents need credentials — API keys, tokens, passwords — to do anything useful. Today they get them the worst possible way: a long-lived key stuffed into an environment variable or, worse, into the prompt. OpenClaw leaked the keys of ~135k exposed instances exactly this way. A key in the model's context is a key in every log, every trace, and every place a poisoned tool can read.
+
+| | a raw key in env / prompt | a strongroom lease |
+|---|---|---|
+| in the model's context | **yes** — leaks to logs, traces, poisoned tools | no — only an opaque handle |
+| lifetime | until you rotate it | seconds (TTL) |
+| blast radius | every call, every host | one use, one host |
+| revocable | rotate everywhere | `strongroom revoke <lease>` |
+| audited | no | every access, tamper-evident |
+
+**strongroom holds the keys so the agent doesn't:**
+
+| piece | what it does |
+|---|---|
+| **vault** | secrets encrypted at rest (AES-256-GCM, name bound in as AAD). Never a plaintext env var, never in a prompt |
+| **lease** | `grant` mints an opaque handle bound to a **TTL**, a **use count**, and (optionally) a **destination host / upstream / paths / rate**. The agent's context holds the lease, not the secret |
+| **redeem** | exchange a lease for the secret at the point of use, *iff* it's still valid (not expired, uses remaining, host in scope). A denial is audited and never burns a use |
+| **audit** | every grant / redeem / deny / revoke is **hash-chained** (the same primitive [redstamp](https://github.com/askalf/redstamp) uses, vendored so strongroom installs with **zero dependencies**) with an authenticated tip — editing, truncating, or splicing the log breaks `strongroom audit --verify` |
+
+```mermaid
+flowchart LR
+    A["agent<br/>holds LEASE only"] -->|"base-URL swap"| B["egress broker<br/>injects key at network boundary"]
+    A -->|"strongroom exec"| E["subprocess env<br/>key never in agent context"]
+    A -->|"GIT_ASKPASS etc."| D["redeem-daemon<br/>local socket, keyless client"]
+    B --> V["vault<br/>AES-256-GCM at rest"]
+    E --> V
+    D --> V
+    V --> AU["hash-chained audit<br/>authenticated tip"]
+```
+
+Completes the agent-security stack: **redstamp** contains the call · **truecopy** vets the tool · **strongroom** holds the keys.
+
+> _**Formerly `keeper`.** Renamed to `strongroom` for the npm release; the GitHub repo redirects and the legacy `keeper` CLI alias keeps working. `KEEPER_*` env vars and the `~/.keeper` home directory are unchanged for compatibility._
+
+## Quick start
+
+> Install: `npm i -g @askalf/strongroom` (or run any command with `npx -y @askalf/strongroom`). **Zero runtime dependencies** — one package, no transitive tree, no `git` or GitHub reachability at install time, so it installs where the secrets actually live: air-gapped hosts, registry mirrors, and minimal CI images. (`npm i -g github:askalf/strongroom` also works, but that path *does* need git.)
+
+The vault + lease + exec loop is the block at the top of this page. Three egress patterns cover the rest: the [broker](#egress-broker--the-agent-just-swaps-a-base-url) for HTTP APIs, the [redeem-daemon](#redeem-daemon--no-master-key-on-the-redeeming-side) for credentials a tool consumes directly, and the [MCP server](#mcp-server--leases-not-keys-over-mcp) when the control plane itself speaks MCP.
 
 ## Egress broker — the agent just swaps a base URL
 
@@ -111,16 +146,6 @@ Three end-to-end examples, each running a genuine client with a credential that 
 | [`examples/anthropic-sdk-strongroom`](examples/anthropic-sdk-strongroom) | the **Anthropic SDK** (`@anthropic-ai/sdk`) making a real `messages.create` call through the broker — `x-api-key` injected at egress |
 | [`examples/openai-agents-strongroom`](examples/openai-agents-strongroom) | a real **OpenAI Agents SDK** agent run loop with its model calls brokered through a lease |
 | [`examples/mcp-strongroom`](examples/mcp-strongroom) | an **MCP server** whose tools return *leases, not keys* — the "where does the key live?" answer for every credentialed MCP server |
-
-## Why a lease, not the key
-
-| | a raw key in env / prompt | a strongroom lease |
-|---|---|---|
-| in the model's context | **yes** — leaks to logs, traces, poisoned tools | no — only an opaque handle |
-| lifetime | until you rotate it | seconds (TTL) |
-| blast radius | every call, every host | one use, one host |
-| revocable | rotate everywhere | `strongroom revoke <lease>` |
-| audited | no | every access, tamper-evident |
 
 ## Dispatching to a fleet
 
@@ -225,9 +250,9 @@ const sub = grantFromLease(lease.id, { ttlS: 30, uses: 1 }); // sub.parent = par
 
 ## The agent-security stack
 
-Three composable layers, one defense: **[redstamp](https://github.com/askalf/redstamp)** contains the call · **[truecopy](https://github.com/askalf/truecopy)** vets the tool · **[strongroom](https://github.com/askalf/strongroom)** holds the keys *(you are here)*. Run all three together → **[agent-security-stack](https://github.com/askalf/agent-security-stack)**.
+Three composable layers, one defense: **[redstamp](https://github.com/askalf/redstamp)** contains the call · **[truecopy](https://github.com/askalf/truecopy)** vets the tool · **strongroom** holds the keys *(you are here)*. Run all three together → **[agent-security-stack](https://github.com/askalf/agent-security-stack)**.
 
 Related: **[plumbline](https://github.com/askalf/plumbline)** — *own your agent trajectory.* Out-of-band, read-only monitoring of the whole action sequence against the declared job, catching escapes assembled from individually-authorized steps. It sits **above** the three in-path layers as a monitor — it never blocks an action.
 
 ---
-Part of **[Own Your Stack](https://github.com/askalf)** — own your AI infrastructure instead of renting it. Built by Thomas Sprayberry.
+Part of **[Own Your Stack](https://github.com/askalf)** — own your AI infrastructure instead of renting it by the token. Built by Thomas Sprayberry · MIT.
