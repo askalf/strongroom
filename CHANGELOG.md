@@ -6,6 +6,14 @@ adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- **`keeper leases --json` now carries each lease's full hash, and `revoke` accepts it.** `listLeases()` has only ever shown a 12-char `fingerprint` — a display truncation of the sha256 digest the vault already keys leases by internally. The raw bearer id is shown once at grant time and deliberately never persisted, which means an operator (or any caller) working purely from the listing has never had anything to revoke an individual lease WITH. The full digest was the missing piece, not a new secret: sha256 is one-way over a 144-bit id, so showing all 64 hex chars instead of 12 does not make the id any more recoverable — it just makes an entry that already couldn't be redeemed from the listing also individually revocable from it. `keeper revoke --hash <hash>` (new; the positional `keeper revoke <lease>` form is unchanged) and the library's `revokeByHash(hash)` both take it directly, so `leases --json` → pick a row → `revoke --hash` is now a complete loop with no id ever in the middle.
+
+- **`revoke`, `rm` and `rekey` all gained `--json`, closing out the machine contract.** `grant`/`leases`/`ls`/`audit` already put exactly one parseable value on stdout; these three didn't. `rm` was the sharper gap: it has always exited `0` whether or not the named secret existed, so a script (or an admin panel) checking only the exit code could not tell "deleted" from "already gone" apart — `--json` now reports `{"ok":true|false}` while leaving the exit code exactly as it was, so nothing that only checked "did it run" breaks. `rekey --json` returns `{"ok":true,from,to,secrets}` on success or `{"ok":false,"error"}` on failure (still exit `1`, matching every other failure path here).
+
+  Built for a control-plane admin panel (alf-dock) that needs to act on individual leases from what it can already see, without ever holding a raw bearer id itself.
+
 ### Security
 
 - **The MCP poison gate was running a detector with a known bypass (CI only, no package change).** `mcp-gate.yml` pinned `@askalf/truecopy@0.10.1`, which bundles `@askalf/redstamp` 0.7.3 as its scanning engine. truecopy 0.10.3 shipped on 2026-08-05 specifically to pick up redstamp 0.7.5, which fixed redstamp#124 — a proven live bypass where PowerShell's `-ArgumentList` array form (`'-ExecutionPolicy','Bypass',…`) rated **green** while the semantically identical space-separated spelling rated black, because both obfuscation lookaheads assumed whitespace between a flag and its value. truecopy's own changelog states a `verify`/`scan` against 0.7.3 "could miss a skill or MCP server using that evasion shape". This gate is what vouches for `@askalf/strongroom-mcp`'s tool surface, so while that pin stood it could have passed a surface using that evasion.

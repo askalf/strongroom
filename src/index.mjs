@@ -79,6 +79,18 @@ export function revoke(leaseId) {
   return had;
 }
 
+/** Revoke by the hash `listLeases()` shows — for a caller (an admin panel,
+ *  an operator) who was never handed the raw id. The audited fingerprint is
+ *  sliced from `hash` DIRECTLY, never re-hashed through `fp()` — `hash` IS
+ *  already sha256(leaseId) in full, so fp(hash) would hash it a second time
+ *  and log a fingerprint that matches nothing else this lease ever appears
+ *  under, breaking correlation with its own grant/redeem/deny audit trail. */
+export function revokeByHash(hash) {
+  const had = lease.revokeLeaseByHash(hash);
+  audit.record({ event: 'revoke', lease: String(hash ?? '').slice(0, 12) });
+  return had;
+}
+
 /** Rotate the master key (see vault.rekeyVault). Audited AFTER the swap, which
  *  also re-MACs the audit's authenticated tip under the NEW key — the tip is
  *  keyed off the master key, so a rotation that skipped this would leave

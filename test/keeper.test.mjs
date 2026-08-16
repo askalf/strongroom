@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 process.env.KEEPER_HOME = path.join(os.tmpdir(), 'keeper-' + process.pid); // isolate the vault
-import { addSecret, grant, redeem, revoke, vault, audit } from '../src/index.mjs';
+import { addSecret, grant, redeem, revoke, revokeByHash, vault, lease, audit } from '../src/index.mjs';
 
 test('vault: secrets are encrypted at rest; round-trip decrypts', () => {
   addSecret('API_KEY', 'sk-super-secret-value');
@@ -43,6 +43,31 @@ test('lease: revoke kills it immediately', () => {
   const l = grant('S4', { uses: 5 });
   assert.equal(revoke(l.id), true);
   assert.equal(redeem(l.id).reason, 'unknown');
+});
+
+test('lease: revokeByHash kills it using only what listLeases() shows, never the raw id', () => {
+  addSecret('S5', 'val5');
+  const l = grant('S5', { uses: 5 });
+  const listed = lease.listLeases().find((x) => x.secret === 'S5');
+  assert.equal(revokeByHash(listed.hash), true);
+  assert.equal(redeem(l.id).reason, 'unknown');
+  assert.equal(revokeByHash(listed.hash), false, 'revoking twice is a no-op, not an error');
+});
+
+test('lease: revokeByHash rejects malformed input rather than treating it as a lookup key', () => {
+  assert.equal(revokeByHash('not-a-hash'), false);
+  assert.equal(revokeByHash(''), false);
+  assert.equal(revokeByHash(null), false);
+  assert.equal(revokeByHash('__proto__'), false);
+});
+
+test('lease: revoke and revokeByHash audit the SAME fingerprint for the same lease', () => {
+  addSecret('S6', 'val6');
+  const l = grant('S6', { uses: 5 });
+  const listed = lease.listLeases().find((x) => x.secret === 'S6');
+  revokeByHash(listed.hash);
+  const events = audit.read().filter((e) => e.event === 'revoke');
+  assert.equal(events[events.length - 1].lease, listed.fingerprint, 'revokeByHash must not double-hash — it would log a fingerprint matching no other event for this lease');
 });
 
 test('audit: every access is hash-chained and tamper-evident', () => {
