@@ -63,7 +63,7 @@ test('lease: revokeByHash rejects malformed input rather than treating it as a l
 
 test('lease: revoke and revokeByHash audit the SAME fingerprint for the same lease', () => {
   addSecret('S6', 'val6');
-  const l = grant('S6', { uses: 5 });
+  grant('S6', { uses: 5 }); // minted for its side effect — this test reads the lease back via listLeases()
   const listed = lease.listLeases().find((x) => x.secret === 'S6');
   revokeByHash(listed.hash);
   const events = audit.read().filter((e) => e.event === 'revoke');
