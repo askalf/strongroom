@@ -43,7 +43,7 @@ function usage() {
 
   keeper add <name>                    store a secret (value from stdin, or --value=)
   keeper ls [--json]                   list secret names (never values)
-  keeper rm <name>                     delete a secret
+  keeper rm <name> [--json]            delete a secret
   keeper grant <name> [opts]           mint a lease the agent holds instead of the key
        --ttl <s>=300  --uses <n>=1  --host <host>
                                        (KEEPER_MAX_TTL / KEEPER_MAX_USES, if set, cap every grant)
@@ -74,7 +74,7 @@ function usage() {
   keeper revoke --hash <hash> [--json] kill a lease by the hash \`leases\` shows — for when
                                        you only ever had the listing, never the raw id
   keeper audit [--verify] [--json]     show the access log (--verify checks the hash chain)
-  keeper rekey [--to passphrase|keychain|file]
+  keeper rekey [--to passphrase|keychain|file] [--json]
                                        rotate the master key: re-encrypt every secret under a
                                        new key (passphrase target reads KEEPER_NEW_PASSPHRASE)
   keeper keychain                      master-key backend status (set KEEPER_KEYCHAIN=1 to use the OS keychain)
@@ -105,7 +105,18 @@ const T = {
     names.forEach((n) => out(`${c(C.grn, '●')} ${n}`));
     return 0;
   },
-  rm() { if (!pos[0]) return (usage(), 2); out(removeSecret(pos[0]) ? `${c(C.grn, '✓')} removed ${pos[0]}` : c(C.dim, `no such secret: ${pos[0]}`)); return 0; },
+  rm() {
+    if (!pos[0]) return (usage(), 2);
+    const had = removeSecret(pos[0]);
+    // Unlike every other write here, `rm` used to return 0 whether or not the
+    // secret existed — a caller checking the exit code alone could not tell
+    // "deleted" from "already gone" apart. --json now reports which; the exit
+    // code stays 0 either way so a script that only checked "did it run" is
+    // unaffected.
+    if (asJson) return (out(JSON.stringify({ ok: had })), 0);
+    out(had ? `${c(C.grn, '✓')} removed ${pos[0]}` : c(C.dim, `no such secret: ${pos[0]}`));
+    return 0;
+  },
   grant() {
     // Delegation mode: `keeper grant --from-lease <parentLease> [tighter opts]`
     // attenuates a lease the caller HOLDS into a narrower sub-lease for a
@@ -171,11 +182,15 @@ const T = {
     try {
       const to = opt('--to', null);
       const r = rekeyMasterKey({ to: to && to !== true ? to : undefined });
+      if (asJson) return (out(JSON.stringify({ ok: true, from: r.from, to: r.to, secrets: r.secrets })), 0);
       out(`${c(C.grn, '✓')} master key rotated (${r.from} → ${r.to}) · ${r.secrets} secret(s) re-encrypted`);
       if (r.to === 'passphrase') err(c(C.dim, '  ↳ use the NEW passphrase in KEEPER_PASSPHRASE from now on'));
       err(c(C.dim, '  ↳ restart any running keeper daemon/broker — they hold the old key and will fail closed'));
       return 0;
-    } catch (e) { err(`${c(C.red, '✗')} ${e.message}`); return 1; }
+    } catch (e) {
+      if (asJson) return (out(JSON.stringify({ ok: false, error: e.message })), 1);
+      err(`${c(C.red, '✗')} ${e.message}`); return 1;
+    }
   },
   keychain() {
     const on = process.env.KEEPER_KEYCHAIN === '1' || process.env.KEEPER_KEYCHAIN === 'true';

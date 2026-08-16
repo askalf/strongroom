@@ -100,6 +100,19 @@ test('revoke <id> --json: unchanged shape, now also machine-readable', () => {
   assert.deepEqual(JSON.parse(r.stdout), { ok: true });
 });
 
+test('rm --json: distinguishes deleted from already-gone — the exit code alone never could', () => {
+  addSecret('RM1', 'temp-value');
+  const first = run('rm', 'RM1', '--json');
+  assert.equal(first.status, 0);
+  assert.deepEqual(JSON.parse(first.stdout), { ok: true });
+
+  // rm has ALWAYS exited 0 whether or not the secret existed — that's the gap
+  // --json closes. Same command, same exit code, opposite ok.
+  const second = run('rm', 'RM1', '--json');
+  assert.equal(second.status, 0, 'exit code unchanged — a script checking only that stays working');
+  assert.deepEqual(JSON.parse(second.stdout), { ok: false });
+});
+
 test('audit --json: the parsed event array (mirrors audit.read())', () => {
   const r = run('audit', '--json');
   assert.equal(r.status, 0);
