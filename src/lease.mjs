@@ -296,8 +296,32 @@ export function revokeLease(id) {
   } catch { return false; }
 }
 
-/** Outstanding leases — shown by fingerprint (we don't hold the raw ids). */
+/** A full sha256 hex digest — the storage key `listLeases()` now exposes and
+ *  `revokeLeaseByHash` accepts directly. Exactly 64 lowercase hex chars. */
+const HASH_RE = /^[0-9a-f]{64}$/;
+
+/** Revoke a lease you can only NAME by its hash — an operator working from
+ *  `listLeases()` output, who was never handed the raw bearer id (by design:
+ *  the vault does not persist it past grant time). `hash` is sha256(id), the
+ *  exact object key `read()` is already keyed by, so this is a direct lookup,
+ *  never a re-hash — a hash is one-way, so exposing the full 64 chars (vs. the
+ *  12-char display `fingerprint`) does not make the bearer id any more
+ *  recoverable; it only makes the entry that already can't be redeemed from
+ *  this listing also individually revocable from it. Malformed input is
+ *  rejected rather than silently no-op'd against a plain object used as a
+ *  lookup table. */
+export function revokeLeaseByHash(hash) {
+  if (typeof hash !== 'string' || !HASH_RE.test(hash)) return false;
+  try {
+    return withLock(() => { const leases = read(); const had = !!leases[hash]; delete leases[hash]; write(leases); return had; });
+  } catch { return false; }
+}
+
+/** Outstanding leases — shown by fingerprint (we don't hold the raw ids). The
+ *  full `hash` rides alongside it: still one-way (see revokeLeaseByHash), so
+ *  a machine caller can target a specific lease for revocation without the
+ *  vault ever having stored anything more recoverable than it already did. */
 export function listLeases() {
   const leases = read(), now = Date.now();
-  return Object.entries(leases).map(([h, l]) => ({ fingerprint: h.slice(0, 12), secret: l.secret, usesLeft: l.usesLeft, host: l.host, expiresAt: l.expiresAt, expired: now > l.expiresAt, parent: l.parent || null }));
+  return Object.entries(leases).map(([h, l]) => ({ fingerprint: h.slice(0, 12), hash: h, secret: l.secret, usesLeft: l.usesLeft, host: l.host, expiresAt: l.expiresAt, expired: now > l.expiresAt, parent: l.parent || null }));
 }

@@ -46,6 +46,12 @@ test('leases --json: array of secret-safe records (fingerprints, no raw ids)', (
   for (const l of ls) {
     assert.equal(typeof l.fingerprint, 'string');
     assert.equal(l.fingerprint.length, 12);
+    // hash is the FULL sha256 digest — still one-way (see revokeLeaseByHash),
+    // so exposing all 64 chars doesn't recover the raw id any more than the
+    // 12-char fingerprint already didn't. It's what --hash revoke consumes.
+    assert.equal(typeof l.hash, 'string');
+    assert.match(l.hash, /^[0-9a-f]{64}$/);
+    assert.equal(l.hash.slice(0, 12), l.fingerprint, 'fingerprint is a prefix of hash, not a different value');
     assert.ok(typeof l.usesLeft === 'number' && typeof l.expiresAt === 'number');
   }
   assert.ok(!r.stdout.includes('lease_'), 'no raw lease id ever appears');
@@ -55,6 +61,43 @@ test('ls --json: plain array of names', () => {
   const r = run('ls', '--json');
   assert.equal(r.status, 0);
   assert.deepEqual(JSON.parse(r.stdout), ['J1']);
+});
+
+// Below this point tests are free to addSecret/grant more — nothing later
+// asserts an exact ls/leases snapshot the way the one above does.
+
+test('revoke --hash --json: kills the lease named only by its listing, id stays unknown to the caller', () => {
+  addSecret('RH1', 'sk-revoke-by-hash-value');
+  const g = run('grant', 'RH1', '--json', '--uses', '5');
+  const granted = JSON.parse(g.stdout);
+  const listed = JSON.parse(run('leases', '--json').stdout).find((l) => l.secret === 'RH1');
+  assert.ok(listed, 'the freshly granted lease appears in the listing');
+
+  // The revoke call below uses ONLY `listed.hash` — never `granted.id` — the
+  // exact scenario this exists for: an operator with the listing, not the id.
+  const r = run('revoke', '--hash', listed.hash, '--json');
+  assert.equal(r.status, 0);
+  assert.deepEqual(JSON.parse(r.stdout), { ok: true });
+  assert.ok(!r.stdout.includes(granted.id), 'the raw id is never echoed back');
+
+  const still = JSON.parse(run('leases', '--json').stdout);
+  assert.ok(!still.some((l) => l.hash === listed.hash), 'the lease is actually gone');
+});
+
+test('revoke --hash: a malformed or unknown hash is refused, not a silent crash', () => {
+  const bad = run('revoke', '--hash', 'not-a-hash', '--json');
+  assert.equal(bad.status, 0);
+  assert.deepEqual(JSON.parse(bad.stdout), { ok: false });
+
+  const unknown = run('revoke', '--hash', 'a'.repeat(64), '--json');
+  assert.deepEqual(JSON.parse(unknown.stdout), { ok: false });
+});
+
+test('revoke <id> --json: unchanged shape, now also machine-readable', () => {
+  addSecret('RH2', 'v');
+  const g = JSON.parse(run('grant', 'RH2', '--json').stdout);
+  const r = run('revoke', g.id, '--json');
+  assert.deepEqual(JSON.parse(r.stdout), { ok: true });
 });
 
 test('audit --json: the parsed event array (mirrors audit.read())', () => {

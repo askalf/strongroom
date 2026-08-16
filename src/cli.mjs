@@ -2,7 +2,7 @@
 // keeper CLI — store secrets, grant scoped short-lived leases, redeem at egress.
 import fs from 'node:fs';
 import { spawnSync } from 'node:child_process';
-import { addSecret, removeSecret, grant, grantFromLease, redeem, revoke, rekeyMasterKey, vault, lease, audit } from './index.mjs';
+import { addSecret, removeSecret, grant, grantFromLease, redeem, revoke, revokeByHash, rekeyMasterKey, vault, lease, audit } from './index.mjs';
 import { startBroker } from './broker.mjs';
 import { startDaemon } from './daemon.mjs';
 import { redeemViaDaemon } from './client.mjs';
@@ -68,8 +68,11 @@ function usage() {
   keeper serve [--socket <path>]       run the redeem-daemon (HOLDS the key) on a local socket;
                                        a doer sets KEEPER_DAEMON=1 + KEEPER_SOCKET/_TOKEN and
                                        redeems its leases without ever holding the master key
-  keeper leases [--json]               list outstanding leases
-  keeper revoke <lease>                kill a lease
+  keeper leases [--json]               list outstanding leases (each carries its full hash too —
+                                       revocable even though the raw id was never kept)
+  keeper revoke <lease> [--json]       kill a lease by its raw id
+  keeper revoke --hash <hash> [--json] kill a lease by the hash \`leases\` shows — for when
+                                       you only ever had the listing, never the raw id
   keeper audit [--verify] [--json]     show the access log (--verify checks the hash chain)
   keeper rekey [--to passphrase|keychain|file]
                                        rotate the master key: re-encrypt every secret under a
@@ -211,7 +214,23 @@ const T = {
     ls.forEach((l) => out(`${l.expired ? c(C.dim, '○') : c(C.grn, '●')} ${c(C.bold, l.fingerprint)} ${c(C.dim, `→ ${l.secret} · ${l.usesLeft} use(s)${l.expired ? ' · EXPIRED' : ''}${l.host ? ' · ' + l.host : ''}${l.parent ? ' · ⤷ from ' + l.parent : ''}`)}`));
     return 0;
   },
-  revoke() { if (!pos[0]) return (usage(), 2); out(revoke(pos[0]) ? `${c(C.grn, '✓')} revoked ${pos[0]}` : c(C.dim, `no such lease: ${pos[0]}`)); return 0; },
+  revoke() {
+    // --hash targets a lease by the value `leases --json` actually exposes —
+    // the raw id is shown once at grant time and never again, so a caller
+    // working purely from the listing (a script, an admin panel) has no other
+    // way to name one. Positional <lease> (the raw id) keeps working exactly
+    // as before.
+    const hash = opt('--hash', null);
+    if (hash && hash !== true) {
+      if (asJson) return (out(JSON.stringify({ ok: revokeByHash(hash) })), 0);
+      out(revokeByHash(hash) ? `${c(C.grn, '✓')} revoked ${hash.slice(0, 12)}` : c(C.dim, `no such lease: ${hash.slice(0, 12)}`));
+      return 0;
+    }
+    if (!pos[0]) return (usage(), 2);
+    if (asJson) return (out(JSON.stringify({ ok: revoke(pos[0]) })), 0);
+    out(revoke(pos[0]) ? `${c(C.grn, '✓')} revoked ${pos[0]}` : c(C.dim, `no such lease: ${pos[0]}`));
+    return 0;
+  },
   audit() {
     if (asJson) {
       // --verify → the verdict object ({ ok, entries } | { ok:false, reason|at }),
