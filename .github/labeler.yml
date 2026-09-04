@@ -1,0 +1,85 @@
+# Path → label map for .github/workflows/pr-triage.yml (actions/labeler v7).
+#
+# Additive only: sync-labels is off, so nothing here ever strips a label a
+# human — or Dependabot — put on a PR by hand. Add a path, get a label.
+#
+# Label names match the Own Your Stack family vocabulary (redstamp is the
+# reference): bare nouns, not `area:` prefixes, so a reader moving between
+# repos sees the same words for the same things.
+
+# The product's whole thesis: a lease is the only credential path, and it is
+# scoped, expiring and revocable. Changes here change what a compromise costs.
+leases:
+  - changed-files:
+      - any-glob-to-any-file:
+          - 'src/lease.mjs'
+          - 'src/chain.mjs'
+
+# Where secrets actually live, and how they are reached on disk.
+vault:
+  - changed-files:
+      - any-glob-to-any-file:
+          - 'src/vault.mjs'
+          - 'src/keychain.mjs'
+          - 'src/paths.mjs'
+
+# The broker process and the clients that talk to it — the trust boundary an
+# agent never crosses.
+daemon:
+  - changed-files:
+      - any-glob-to-any-file:
+          - 'src/daemon.mjs'
+          - 'src/broker.mjs'
+          - 'src/client.mjs'
+
+audit:
+  - changed-files:
+      - any-glob-to-any-file:
+          - 'src/audit.mjs'
+
+cli:
+  - changed-files:
+      - any-glob-to-any-file:
+          - 'src/cli.mjs'
+
+mcp:
+  - changed-files:
+      - any-glob-to-any-file:
+          - 'mcp/**'
+
+tests:
+  - changed-files:
+      - any-glob-to-any-file:
+          - 'test/**'
+          - '**/*.test.mjs'
+
+fuzz:
+  - changed-files:
+      - any-glob-to-any-file:
+          - 'fuzz/**'
+          - '.clusterfuzzlite/**'
+
+examples:
+  - changed-files:
+      - any-glob-to-any-file:
+          - 'examples/**'
+          - 'demo/**'
+
+github_actions:
+  - changed-files:
+      - any-glob-to-any-file:
+          - '.github/workflows/**'
+          - '.github/labeler.yml'
+
+# Prose only. Scoped to the docs that exist rather than a bare '**/*.md', so a
+# PR shipping code plus its README paragraph is not filed as documentation.
+documentation:
+  - changed-files:
+      - any-glob-to-any-file:
+          - 'README.md'
+          - 'CHANGELOG.md'
+          - 'CONTRIBUTING.md'
+          - 'CODE_OF_CONDUCT.md'
+          - 'SECURITY.md'
+          - '.github/ISSUE_TEMPLATE/**'
+          - '.github/pull_request_template.md'

@@ -1,0 +1,52 @@
+name: Bug report
+description: strongroom did something other than what it says it does.
+labels: ['bug']
+body:
+  - type: markdown
+    attributes:
+      value: |
+        If a secret was exposed, or a lease worked where it should not have,
+        do NOT file it here — use the private security advisory link. A leak
+        report in a public issue is the leak.
+
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you ran, and what it did.
+      render: text
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected instead
+    validations:
+      required: true
+
+  - type: textarea
+    id: repro
+    attributes:
+      label: Reproduction
+      description: >
+        The smallest thing that shows it. The lease or vault operation that misbehaved is ideal — attach it if you can share it.
+      render: text
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: strongroom version
+      placeholder: '0.5.0'
+    validations:
+      required: true
+
+  - type: input
+    id: env
+    attributes:
+      label: OS and Node version
+      placeholder: 'macOS 15.2, node 22.11.0'
+    validations:
+      required: true
